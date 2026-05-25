@@ -1,0 +1,79 @@
+# File kredensial dan konfigurasi sensitif
+.env
+credentials.json
+*.pem
+*.key
+*.crt
+
+# File token dan API keys
+**/bot_token.txt
+**/api_keys.txt
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env/
+.venv/
+venv.bak/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# File log dan database
+*.log
+*.sqlite
+*.db
+
+# File sementara editor dan OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-*
+
+# File distribusi dan build
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# File coverage testing
+.coverage
+.coverage.*
+.htmlcov/
+.tox/
+.pytest_cache/
+.mypy_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# File backup
+*.bak
+*.backup
+
+# File requirements yang dihasilkan (opsional, jika kamu ingin tetap commit, hapus baris ini)
+# requirements.txt
+
+# File proyek spesifik
+data_cache.pkl
+sheet_cache.json
