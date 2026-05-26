@@ -4,7 +4,7 @@ credentials.json
 *.pem
 *.key
 *.crt
-
+.zip
 # File token dan API keys
 **/bot_token.txt
 **/api_keys.txt
