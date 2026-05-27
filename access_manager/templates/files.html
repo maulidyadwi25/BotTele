@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block title %}File Browser | DEFEND ID ACCESS{% endblock %}
+
+{% block head %}
+<style>
+.sidebar-link-active {
+    background-color: #1d437a;
+    color: #90b1ef;
+}
+</style>
+{% endblock %}
+
+{% block body %}
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-gutter h-16 bg-surface border-b border-outline-variant">
+    <div class="flex items-center gap-md">
+        <span class="text-headline-md font-bold text-secondary">DEFEND ID ACCESS</span>
+        <div class="hidden md:flex ml-lg items-center bg-surface-container-low px-sm py-1 rounded-lg border border-outline-variant">
+            <span class="material-symbols-outlined text-outline" style="font-size: 20px;">search</span>
+            <input class="bg-transparent border-none focus:ring-0 text-label-md font-label-md w-64 placeholder:text-on-surface-variant" 
+                   id="searchInput" placeholder="Search files, users, or permissions..." type="text"/>
+        </div>
+    </div>
+    <div class="flex items-center gap-md">
+        <button class="material-symbols-outlined p-2 hover:bg-surface-container-low rounded-full text-on-surface-variant">notifications</button>
+        <div class="h-8 w-8 rounded-full bg-primary-container overflow-hidden border border-outline-variant flex items-center justify-center text-on-primary-container font-bold text-label-md">
+            {{ session.get('username', 'A')[0].upper() }}
+        </div>
+        <a href="{{ url_for('auth.logout') }}" class="material-symbols-outlined p-2 hover:bg-surface-container-low rounded-full text-on-surface-variant" title="Logout">logout</a>
+    </div>
+</header>
+
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full w-64 flex flex-col pt-20 pb-8 px-4 bg-surface-container-lowest border-r border-outline-variant z-40">
+    <div class="mb-lg px-2">
+        <h2 class="text-headline-sm font-bold text-secondary">Security Console</h2>
+        <p class="text-label-md text-on-surface-variant opacity-70">File Access Mgmt</p>
+    </div>
+    
+    <div class="flex flex-col gap-1 flex-grow">
+        <a class="flex items-center gap-md px-4 py-3 text-on-surface-variant hover:bg-surface-container transition-transform duration-200 hover:translate-x-1 rounded-lg" href="{{ url_for('dashboard.index') }}">
+            <span class="material-symbols-outlined">dashboard</span>
+            <span class="text-body-md">Dashboard</span>
+        </a>
+        <a class="flex items-center gap-md px-4 py-3 text-on-surface-variant hover:bg-surface-container transition-transform duration-200 hover:translate-x-1 rounded-lg" href="{{ url_for('users.index') }}">
+            <span class="material-symbols-outlined">group</span>
+            <span class="text-body-md">User Management</span>
+        </a>
+        <a class="flex items-center gap-md px-4 py-3 sidebar-link-active font-bold rounded-lg" href="{{ url_for('files.index') }}">
+            <span class="material-symbols-outlined">folder_open</span>
+            <span class="text-body-md">File Browser</span>
+        </a>
+    </div>
+    
+    <div class="mt-auto border-t border-outline-variant pt-lg flex flex-col gap-1">
+        <button class="w-full py-3 mb-md bg-secondary text-white rounded-lg font-bold text-label-md hover:opacity-90 transition-opacity">
+            Revoke All Access
+        </button>
+        <a class="flex items-center gap-md px-4 py-2 text-error hover:bg-error-container rounded-lg" href="{{ url_for('auth.logout') }}">
+            <span class="material-symbols-outlined">logout</span>
+            <span class="text-label-md">Logout</span>
+        </a>
+    </div>
+</nav>
+
+<!-- Main Content Canvas -->
+<main class="lg:ml-64 pt-16 h-screen flex flex-col overflow-hidden bg-surface">
+    <!-- Breadcrumbs & Toolbar -->
+    <div class="px-gutter py-md bg-surface-container-low flex items-center justify-between border-b border-outline-variant">
+        <nav class="flex items-center gap-xs" id="breadcrumbs">
+            <a class="text-primary hover:underline text-label-md font-label-md flex items-center" href="#" onclick="navigateToFolder(null)">
+                <span class="material-symbols-outlined mr-base" style="font-size: 16px;">home</span> Root
+            </a>
+        </nav>
+        <div class="flex items-center gap-sm">
+            <button class="flex items-center gap-base px-3 py-1.5 border border-outline-variant rounded bg-white text-label-md font-label-md hover:bg-surface-container transition-colors">
+                <span class="material-symbols-outlined" style="font-size: 18px;">filter_list</span> Filter
+            </button>
+            <div class="flex border border-outline-variant rounded bg-white overflow-hidden">
+                <button class="p-1.5 bg-primary-container text-on-primary-container" id="listViewBtn"><span class="material-symbols-outlined" style="font-size: 18px;">list</span></button>
+                <button class="p-1.5 hover:bg-surface-container" id="gridViewBtn"><span class="material-symbols-outlined" style="font-size: 18px;">grid_view</span></button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- File Browser Table -->
+    <div class="flex-grow overflow-auto">
+        <table class="w-full text-left border-collapse" id="filesTable">
+            <thead class="sticky top-0 bg-surface-container-high z-10">
+                <tr class="border-b border-outline-variant">
+                    <th class="px-gutter py-3 w-12 text-center">
+                        <input class="rounded border-outline text-primary focus:ring-primary h-4 w-4" id="selectAll" type="checkbox"/>
+                    </th>
+                    <th class="px-4 py-3 text-label-md font-medium text-on-surface-variant uppercase tracking-wider">Name</th>
+                    <th class="px-4 py-3 text-label-md font-medium text-on-surface-variant uppercase tracking-wider">Type</th>
+                    <th class="px-4 py-3 text-label-md font-medium text-on-surface-variant uppercase tracking-wider">Access Status</th>
+                    <th class="px-4 py-3 text-label-md font-medium text-on-surface-variant uppercase tracking-wider">Modified</th>
+                    <th class="px-gutter py-3 text-right"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-outline-variant bg-white" id="filesTableBody">
+                <tr>
+                    <td colspan="6" class="py-12 text-center text-on-surface-variant">
+                        <span class="material-symbols-outlined text-4xl mb-md animate-spin">progress_activity</span>
+                        <p class="text-body-md">Loading files...</p>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<!-- Floating Action Bar -->
+<div class="fixed bottom-gutter left-1/2 -translate-x-1/2 flex items-center gap-lg bg-inverse-surface text-inverse-on-surface px-xl py-md rounded-full shadow-2xl z-50 transform translate-y-32 transition-transform duration-300 ease-in-out opacity-0" id="selectionBar">
+    <div class="flex items-center gap-md border-r border-outline-variant pr-lg">
+        <span class="font-bold text-headline-sm" id="selectionCount">0</span>
+        <span class="text-label-md opacity-80 uppercase tracking-widest">Selected</span>
+    </div>
+    <div class="flex items-center gap-md">
+        <button onclick="grantAccessToSelected()" class="flex items-center gap-xs px-lg py-2 bg-primary-container text-on-primary-container rounded-full font-bold text-label-md hover:scale-105 transition-transform">
+            <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+            Grant Access
+        </button>
+        <button onclick="revokeAccessToSelected()" class="flex items-center gap-xs px-lg py-2 border border-outline text-inverse-on-surface rounded-full font-bold text-label-md hover:bg-error hover:border-error transition-all">
+            <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">gpp_bad</span>
+            Revoke Access
+        </button>
+        <div class="w-px h-6 bg-outline-variant mx-xs"></div>
+        <button onclick="clearSelection()" class="material-symbols-outlined p-2 hover:bg-tertiary-container rounded-full text-error" title="Clear Selection">close</button>
+    </div>
+</div>
+
+<!-- Permission Modal -->
+<div id="permissionModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closePermissionModal()"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl max-h-[80vh] bg-surface-container-lowest rounded-xl border border-outline-variant shadow-2xl flex flex-col">
+        <div class="flex justify-between items-center p-lg border-b border-outline-variant">
+            <div>
+                <h2 class="text-headline-sm font-bold text-primary">Manage Permissions</h2>
+                <p class="text-label-md text-on-surface-variant" id="modalFileName">File: -</p>
+            </div>
+            <button onclick="closePermissionModal()" class="material-symbols-outlined text-on-surface-variant hover:text-primary">close</button>
+        </div>
+        
+        <div class="flex-1 overflow-auto p-lg">
+            <div class="space-y-md" id="permissionUserList">
+                <!-- Users will be loaded here -->
+            </div>
+        </div>
+        
+        <div class="flex gap-md p-lg border-t border-outline-variant">
+            <button onclick="closePermissionModal()" class="flex-1 py-2 border border-outline-variant rounded-lg text-body-md font-medium hover:bg-surface-container transition-colors">Cancel</button>
+            <button onclick="savePermissions()" class="flex-1 py-2 bg-primary text-on-primary rounded-lg text-body-md font-bold hover:bg-primary-container hover:text-on-primary-container transition-colors">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentFolderId = '{{ folder_id }}';
+    let filesData = [];
+    let selectedFiles = new Set();
+    let currentFileForPermission = null;
+    
+    // Load files on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        loadFiles();
+        initSelectionHandlers();
+    });
+    
+    async function loadFiles(folderId = null) {
+        currentFolderId = folderId || '{{ folder_id }}';
+        const url = folderId ? `/files/api?folder_id=${folderId}` : '/files/api';
+        
+        try {
+            const response = await fetch(url);
+            const result = await response.json();
+            
+            if (result.success) {
+                filesData = result.data;
+                renderFiles();
+            }
+        } catch (error) {
+            console.error('Error loading files:', error);
+            document.getElementById('filesTableBody').innerHTML = `
+                <tr>
+                    <td colspan="6" class="py-12 text-center text-error">
+                        <span class="material-symbols-outlined text-4xl mb-md">error</span>
+                        <p class="text-body-md">Error loading files</p>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+    
+    function renderFiles() {
+        const tbody = document.getElementById('filesTableBody');
+        
+        if (filesData.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="py-12 text-center text-on-surface-variant">
+                        <span class="material-symbols-outlined text-4xl mb-md">folder_open</span>
+                        <p class="text-body-md">No files found in this folder</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        tbody.innerHTML = filesData.map((file, index) => {
+            const isFolder = file.is_folder;
+            const icon = isFolder ? 'folder' : 'table_chart';
+            const type = isFolder ? 'Directory' : 'Spreadsheet';
+            const status = isFolder ? 'Public' : 'Restricted';
+            const statusClass = isFolder ? 'bg-surface-container text-on-surface-variant' : 'bg-surface-container-high text-primary';
+            
+            return `
+                <tr class="hover:bg-surface-container-low transition-colors group cursor-pointer" data-file-id="${file.id}" data-file-name="${file.name}">
+                    <td class="px-gutter py-3 text-center">
+                        <input class="file-check rounded border-outline text-primary focus:ring-primary h-4 w-4" type="checkbox" onclick="event.stopPropagation()"/>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="flex items-center gap-md">
+                            <span class="material-symbols-outlined text-primary" style="font-size: 24px;">${icon}</span>
+                            <span class="text-body-md font-bold">${file.name}</span>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 text-label-md text-on-surface-variant">${type}</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded ${statusClass} text-[10px] font-bold uppercase">${status}</span>
+                    </td>
+                    <td class="px-4 py-3 text-label-md text-on-surface-variant">-</td>
+                    <td class="px-gutter py-3 text-right">
+                        <button class="material-symbols-outlined opacity-0 group-hover:opacity-100 text-outline hover:text-primary transition-opacity" onclick="event.stopPropagation(); openPermissionModal('${file.id}', '${file.name}')">manage_accounts</button>
+                        ${isFolder ? `<button class="material-symbols-outlined opacity-0 group-hover:opacity-100 text-outline hover:text-primary transition-opacity ml-1" onclick="event.stopPropagation(); loadFiles('${file.id}')">chevron_right</button>` : ''}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+    
+    function initSelectionHandlers() {
+        const selectAll = document.getElementById('selectAll');
+        selectAll.addEventListener('change', () => {
+            const checkboxes = document.querySelectorAll('.file-check');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+            updateSelectionUI();
+        });
+        
+        document.getElementById('filesTableBody').addEventListener('change', (e) => {
+            if (e.target.classList.contains('file-check')) {
+                updateSelectionUI();
+            }
+        });
+    }
+    
+    function updateSelectionUI() {
+        const selected = document.querySelectorAll('.file-check:checked');
+        const count = selected.length;
+        const bar = document.getElementById('selectionBar');
+        
+        document.getElementById('selectionCount').textContent = count;
+        
+        if (count > 0) {
+            bar.classList.remove('translate-y-32', 'opacity-0');
+        } else {
+            bar.classList.add('translate-y-32', 'opacity-0');
+        }
+        
+        selectedFiles.clear();
+        selected.forEach(cb => {
+            const row = cb.closest('tr');
+            selectedFiles.add({
+                id: row.dataset.fileId,
+                name: row.dataset.fileName
+            });
+        });
+    }
+    
+    function clearSelection() {
+        document.querySelectorAll('.file-check').forEach(cb => cb.checked = false);
+        document.getElementById('selectAll').checked = false;
+        updateSelectionUI();
+    }
+    
+    async function openPermissionModal(fileId, fileName) {
+        currentFileForPermission = { id: fileId, name: fileName };
+        document.getElementById('modalFileName').textContent = `File: ${fileName}`;
+        
+        // Load users
+        try {
+            const usersResponse = await fetch('/users/api');
+            const usersResult = await usersResponse.json();
+            
+            // Load current permissions for this file
+            const permResponse = await fetch(`/files/api/${fileId}/permissions`);
+            const permResult = await permResponse.json();
+            
+            const permissions = permResult.data || [];
+            const permittedUserIds = new Set(permissions.map(p => p.telegram_user_id));
+            
+            const userList = document.getElementById('permissionUserList');
+            const users = usersResult.data || [];
+            
+            if (users.length === 0) {
+                userList.innerHTML = `
+                    <div class="text-center py-8 text-on-surface-variant">
+                        <p>No users found. Add users first.</p>
+                    </div>
+                `;
+            } else {
+                userList.innerHTML = users.map(user => `
+                    <div class="flex items-center justify-between p-md bg-surface rounded-lg border border-outline-variant">
+                        <div class="flex items-center gap-md">
+                            <input type="checkbox" class="perm-user-check rounded border-outline text-primary h-4 w-4" data-user-id="${user.id}" 
+                                   ${permittedUserIds.has(user.id) ? 'checked' : ''}/>
+                            <div>
+                                <p class="text-body-md font-medium">${user.display_name || user.username || 'Unknown'}</p>
+                                <p class="text-label-md text-on-surface-variant">@${user.username || 'N/A'} (ID: ${user.telegram_id})</p>
+                            </div>
+                        </div>
+                        <select class="perm-level px-3 py-1 border border-outline-variant rounded text-label-md bg-surface" data-user-id="${user.id}">
+                            <option value="read" ${permissions.find(p => p.telegram_user_id === user.id)?.permission_level === 'read' ? 'selected' : ''}>Read</option>
+                            <option value="write" ${permissions.find(p => p.telegram_user_id === user.id)?.permission_level === 'write' ? 'selected' : ''}>Write</option>
+                            <option value="admin" ${permissions.find(p => p.telegram_user_id === user.id)?.permission_level === 'admin' ? 'selected' : ''}>Admin</option>
+                        </select>
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('Error loading permission data:', error);
+        }
+        
+        document.getElementById('permissionModal').classList.remove('hidden');
+    }
+    
+    function closePermissionModal() {
+        document.getElementById('permissionModal').classList.add('hidden');
+        currentFileForPermission = null;
+    }
+    
+    async function savePermissions() {
+        if (!currentFileForPermission) return;
+        
+        const userChecks = document.querySelectorAll('.perm-user-check');
+        const permLevels = document.querySelectorAll('.perm-level');
+        
+        const permissions = [];
+        userChecks.forEach((check, index) => {
+            permissions.push({
+                user_id: parseInt(check.dataset.userId),
+                granted: check.checked,
+                level: permLevels[index].value
+            });
+        });
+        
+        try {
+            const response = await fetch(`/files/api/${currentFileForPermission.id}/permissions`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_name: currentFileForPermission.name,
+                    permissions: permissions
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                closePermissionModal();
+                alert('Permissions saved successfully');
+            } else {
+                alert('Error: ' + result.error);
+            }
+        } catch (error) {
+            alert('Error saving permissions: ' + error.message);
+        }
+    }
+    
+    function grantAccessToSelected() {
+        if (selectedFiles.size === 0) return;
+        alert('Grant access to selected files - implement bulk grant');
+    }
+    
+    function revokeAccessToSelected() {
+        if (selectedFiles.size === 0) return;
+        alert('Revoke access to selected files - implement bulk revoke');
+    }
+    
+    function navigateToFolder(folderId) {
+        loadFiles(folderId);
+    }
+</script>
+{% endblock %}

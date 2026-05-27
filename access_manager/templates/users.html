@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block title %}User Management | DEFEND ID ACCESS{% endblock %}
+
+{% block head %}
+<style>
+.sidebar-link-active {
+    background-color: #1d437a;
+    color: #90b1ef;
+}
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background-color: #c3c6d1;
+    transition: 0.3s;
+    border-radius: 24px;
+}
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+input:checked + .toggle-slider {
+    background-color: #002c5f;
+}
+input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+}
+</style>
+{% endblock %}
+
+{% block body %}
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-gutter h-16 bg-surface border-b border-outline-variant">
+    <div class="flex items-center gap-md">
+        <span class="text-headline-md font-bold text-secondary">DEFEND ID ACCESS</span>
+    </div>
+    <div class="flex items-center gap-md">
+        <button class="material-symbols-outlined p-2 hover:bg-surface-container-low rounded-full text-on-surface-variant">notifications</button>
+        <div class="h-8 w-8 rounded-full bg-primary-container overflow-hidden border border-outline-variant flex items-center justify-center text-on-primary-container font-bold text-label-md">
+            {{ session.get('username', 'A')[0].upper() }}
+        </div>
+        <a href="{{ url_for('auth.logout') }}" class="material-symbols-outlined p-2 hover:bg-surface-container-low rounded-full text-on-surface-variant" title="Logout">logout</a>
+    </div>
+</header>
+
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full w-64 flex flex-col pt-20 pb-8 px-4 bg-surface-container-lowest border-r border-outline-variant z-40">
+    <div class="mb-lg px-2">
+        <h2 class="text-headline-sm font-bold text-secondary">Security Console</h2>
+        <p class="text-label-md text-on-surface-variant opacity-70">File Access Mgmt</p>
+    </div>
+    
+    <div class="flex flex-col gap-1 flex-grow">
+        <a class="flex items-center gap-md px-4 py-3 text-on-surface-variant hover:bg-surface-container transition-transform duration-200 hover:translate-x-1 rounded-lg" href="{{ url_for('dashboard.index') }}">
+            <span class="material-symbols-outlined">dashboard</span>
+            <span class="text-body-md">Dashboard</span>
+        </a>
+        <a class="flex items-center gap-md px-4 py-3 sidebar-link-active font-bold rounded-lg" href="{{ url_for('users.index') }}">
+            <span class="material-symbols-outlined">group</span>
+            <span class="text-body-md">User Management</span>
+        </a>
+        <a class="flex items-center gap-md px-4 py-3 text-on-surface-variant hover:bg-surface-container transition-transform duration-200 hover:translate-x-1 rounded-lg" href="{{ url_for('files.index') }}">
+            <span class="material-symbols-outlined">folder_open</span>
+            <span class="text-body-md">File Browser</span>
+        </a>
+    </div>
+    
+    <div class="mt-auto border-t border-outline-variant pt-lg flex flex-col gap-1">
+        <a class="flex items-center gap-md px-4 py-2 text-error hover:bg-error-container rounded-lg" href="{{ url_for('auth.logout') }}">
+            <span class="material-symbols-outlined">logout</span>
+            <span class="text-label-md">Logout</span>
+        </a>
+    </div>
+</nav>
+
+<!-- Main Content -->
+<main class="lg:ml-64 pt-16 min-h-screen bg-surface">
+    <div class="p-xl">
+        <!-- Page Header -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between mb-xl gap-md">
+            <div>
+                <h1 class="text-headline-lg font-bold text-primary">User Access Directory</h1>
+                <p class="text-body-md text-on-surface-variant mt-1">Manage Telegram user permissions and security protocols</p>
+            </div>
+            <div class="flex items-center gap-md">
+                <button onclick="openAddUserModal()" class="px-md py-2 bg-primary text-on-primary font-bold rounded-lg flex items-center gap-xs hover:bg-primary-container hover:text-on-primary-container transition-all active:scale-95">
+                    <span class="material-symbols-outlined text-[20px]">person_add</span>
+                    Add User
+                </button>
+            </div>
+        </div>
+        
+        <!-- Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-md mb-xl">
+            <div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant">
+                <h3 class="text-label-md text-on-surface-variant uppercase tracking-wider">Total Users</h3>
+                <p class="text-headline-md font-bold text-primary mt-1">{{ stats.total }}</p>
+            </div>
+            <div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant">
+                <h3 class="text-label-md text-on-surface-variant uppercase tracking-wider">Active</h3>
+                <p class="text-headline-md font-bold text-primary mt-1">{{ stats.active }}</p>
+            </div>
+            <div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant">
+                <h3 class="text-label-md text-on-surface-variant uppercase tracking-wider">Global Access</h3>
+                <p class="text-headline-md font-bold text-primary mt-1">{{ stats.global_access }}</p>
+            </div>
+            <div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant">
+                <h3 class="text-label-md text-on-surface-variant uppercase tracking-wider">Suspended</h3>
+                <p class="text-headline-md font-bold text-primary mt-1">{{ stats.suspended }}</p>
+            </div>
+        </div>
+        
+        <!-- Users Table -->
+        <div class="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-surface-container-low border-b border-outline-variant">
+                        <tr>
+                            <th class="py-4 px-md w-10">
+                                <input class="rounded border-outline-variant text-primary focus:ring-primary" type="checkbox"/>
+                            </th>
+                            <th class="py-4 px-md text-label-md font-medium text-on-surface-variant uppercase tracking-wider">User Profile</th>
+                            <th class="py-4 px-md text-label-md font-medium text-on-surface-variant uppercase tracking-wider">Telegram Username</th>
+                            <th class="py-4 px-md text-label-md font-medium text-on-surface-variant uppercase tracking-wider">Status</th>
+                            <th class="py-4 px-md text-label-md font-medium text-on-surface-variant uppercase tracking-wider">Global Access</th>
+                            <th class="py-4 px-md text-label-md font-medium text-on-surface-variant uppercase tracking-wider text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-outline-variant/30" id="usersTableBody">
+                        {% for user in users %}
+                        <tr class="hover:bg-surface-container-low transition-colors group" data-user-id="{{ user.id }}">
+                            <td class="py-4 px-md">
+                                <input class="user-check rounded border-outline-variant text-primary focus:ring-primary" type="checkbox"/>
+                            </td>
+                            <td class="py-4 px-md">
+                                <div class="flex items-center gap-sm">
+                                    <div class="w-10 h-10 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant flex items-center justify-center">
+                                        <span class="material-symbols-outlined text-on-surface-variant">person</span>
+                                    </div>
+                                    <div>
+                                        <div class="text-body-md font-bold text-on-surface">{{ user.display_name or user.username or 'Unknown' }}</div>
+                                        <div class="text-label-md text-on-surface-variant">ID: {{ user.telegram_id }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-4 px-md font-mono-sm text-primary">
+                                {{ '@' + user.username if user.username else 'N/A' }}
+                            </td>
+                            <td class="py-4 px-md">
+                                <span class="px-2 py-1 rounded-full text-label-md font-medium inline-flex items-center gap-1
+                                    {% if user.status == 'active' %}bg-primary-fixed text-on-primary-fixed
+                                    {% else %}bg-error-container text-on-error-container{% endif %}">
+                                    {% if user.status == 'active' %}
+                                        <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                                        Active
+                                    {% else %}
+                                        <span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+                                        Suspended
+                                    {% endif %}
+                                </span>
+                            </td>
+                            <td class="py-4 px-md">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" class="global-access-toggle" data-user-id="{{ user.id }}" 
+                                           {% if user.has_global_access %}checked{% endif %}>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </td>
+                            <td class="py-4 px-md text-right">
+                                <button onclick="editUser({{ user.id }})" class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors p-1" title="Edit">edit</button>
+                                <button onclick="deleteUser({{ user.id }})" class="material-symbols-outlined text-on-surface-variant hover:text-secondary transition-colors p-1" title="Delete">delete</button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="py-12 text-center text-on-surface-variant">
+                                <span class="material-symbols-outlined text-4xl mb-md">group_off</span>
+                                <p class="text-body-md">No users found. Add a user to get started.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- Add/Edit User Modal -->
+<div id="userModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeUserModal()"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-surface-container-lowest rounded-xl border border-outline-variant p-xl shadow-2xl">
+        <div class="flex justify-between items-center mb-lg">
+            <h2 class="text-headline-sm font-bold text-primary" id="modalTitle">Add New User</h2>
+            <button onclick="closeUserModal()" class="material-symbols-outlined text-on-surface-variant hover:text-primary">close</button>
+        </div>
+        
+        <form id="userForm" onsubmit="saveUser(event)">
+            <input type="hidden" id="userId" name="userId">
+            
+            <div class="space-y-lg">
+                <div>
+                    <label class="text-label-md font-medium text-on-surface-variant block mb-xs" for="telegramId">Telegram ID *</label>
+                    <input class="w-full px-md py-2 bg-surface border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary focus:border-primary" 
+                           id="telegramId" name="telegramId" type="text" required placeholder="e.g., 123456789"/>
+                </div>
+                
+                <div>
+                    <label class="text-label-md font-medium text-on-surface-variant block mb-xs" for="username">Username</label>
+                    <input class="w-full px-md py-2 bg-surface border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary focus:border-primary" 
+                           id="username" name="username" type="text" placeholder="e.g., johndoe"/>
+                </div>
+                
+                <div>
+                    <label class="text-label-md font-medium text-on-surface-variant block mb-xs" for="displayName">Display Name</label>
+                    <input class="w-full px-md py-2 bg-surface border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary focus:border-primary" 
+                           id="displayName" name="displayName" type="text" placeholder="e.g., John Doe"/>
+                </div>
+            </div>
+            
+            <div class="flex gap-md mt-xl">
+                <button type="button" onclick="closeUserModal()" class="flex-1 py-2 border border-outline-variant rounded-lg text-body-md font-medium hover:bg-surface-container transition-colors">Cancel</button>
+                <button type="submit" class="flex-1 py-2 bg-primary text-on-primary rounded-lg text-body-md font-bold hover:bg-primary-container hover:text-on-primary-container transition-colors">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Add User Modal
+    function openAddUserModal() {
+        document.getElementById('modalTitle').textContent = 'Add New User';
+        document.getElementById('userForm').reset();
+        document.getElementById('userId').value = '';
+        document.getElementById('userModal').classList.remove('hidden');
+    }
+    
+    function closeUserModal() {
+        document.getElementById('userModal').classList.add('hidden');
+    }
+    
+    function editUser(userId) {
+        const row = document.querySelector(`tr[data-user-id="${userId}"]`);
+        const cells = row.querySelectorAll('td');
+        
+        document.getElementById('modalTitle').textContent = 'Edit User';
+        document.getElementById('userId').value = userId;
+        document.getElementById('telegramId').value = cells[1].querySelector('.text-label-md').textContent.replace('ID: ', '');
+        document.getElementById('userModal').classList.remove('hidden');
+    }
+    
+    async function saveUser(event) {
+        event.preventDefault();
+        
+        const form = event.target;
+        const userId = document.getElementById('userId').value;
+        const data = {
+            telegram_id: document.getElementById('telegramId').value,
+            username: document.getElementById('username').value,
+            display_name: document.getElementById('displayName').value
+        };
+        
+        const url = userId ? `/users/api/${userId}` : '/users/api';
+        const method = userId ? 'PUT' : 'POST';
+        
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + result.error);
+            }
+        } catch (error) {
+            alert('Error saving user: ' + error.message);
+        }
+    }
+    
+    async function deleteUser(userId) {
+        if (!confirm('Are you sure you want to delete this user?')) return;
+        
+        try {
+            const response = await fetch(`/users/api/${userId}`, {
+                method: 'DELETE'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + result.error);
+            }
+        } catch (error) {
+            alert('Error deleting user: ' + error.message);
+        }
+    }
+    
+    // Global Access Toggle
+    document.querySelectorAll('.global-access-toggle').forEach(toggle => {
+        toggle.addEventListener('change', async function() {
+            const userId = this.dataset.userId;
+            
+            try {
+                const response = await fetch(`/users/api/${userId}/toggle-global`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (!result.success) {
+                    this.checked = !this.checked;
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                this.checked = !this.checked;
+                alert('Error: ' + error.message);
+            }
+        });
+    });
+</script>
+{% endblock %}

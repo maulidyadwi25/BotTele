@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | DEFEND ID ACCESS{% endblock %}
+
+{% block head %}
+<style>
+.sidebar-link-active {
+    background-color: #1d437a;
+    color: #90b1ef;
+}
+</style>
+{% endblock %}
+
+{% block body %}
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-gutter h-16 bg-surface border-b border-outline-variant">
+    <div class="flex items-center gap-md">
+        <span class="text-headline-md font-bold text-secondary">DEFEND ID ACCESS</span>
+    </div>
+    <div class="flex items-center gap-md">
+        <button class="material-symbols-outlined p-2 hover:bg-surface-container-low rounded-full text-on-surface-variant">notifications</button>
+        <div class="h-8 w-8 rounded-full bg-primary-container overflow-hidden border border-outline-variant flex items-center justify-center text-on-primary-container font-bold text-label-md">
+            {{ session.get('username', 'A')[0].upper() }}
+        </div>
+        <a href="{{ url_for('auth.logout') }}" class="material-symbols-outlined p-2 hover:bg-surface-container-low rounded-full text-on-surface-variant" title="Logout">logout</a>
+    </div>
+</header>
+
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full w-64 flex flex-col pt-20 pb-8 px-4 bg-surface-container-lowest border-r border-outline-variant z-40">
+    <div class="mb-lg px-2">
+        <h2 class="text-headline-sm font-bold text-secondary">Security Console</h2>
+        <p class="text-label-md text-on-surface-variant opacity-70">File Access Mgmt</p>
+    </div>
+    
+    <div class="flex flex-col gap-1 flex-grow">
+        <a class="flex items-center gap-md px-4 py-3 sidebar-link-active font-bold rounded-lg" href="{{ url_for('dashboard.index') }}">
+            <span class="material-symbols-outlined">dashboard</span>
+            <span class="text-body-md">Dashboard</span>
+        </a>
+        <a class="flex items-center gap-md px-4 py-3 text-on-surface-variant hover:bg-surface-container transition-transform duration-200 hover:translate-x-1 rounded-lg" href="{{ url_for('users.index') }}">
+            <span class="material-symbols-outlined">group</span>
+            <span class="text-body-md">User Management</span>
+        </a>
+        <a class="flex items-center gap-md px-4 py-3 text-on-surface-variant hover:bg-surface-container transition-transform duration-200 hover:translate-x-1 rounded-lg" href="{{ url_for('files.index') }}">
+            <span class="material-symbols-outlined">folder_open</span>
+            <span class="text-body-md">File Browser</span>
+        </a>
+    </div>
+    
+    <div class="mt-auto border-t border-outline-variant pt-lg flex flex-col gap-1">
+        <a class="flex items-center gap-md px-4 py-2 text-on-surface-variant hover:bg-surface-container rounded-lg" href="#">
+            <span class="material-symbols-outlined">contact_support</span>
+            <span class="text-label-md">Support</span>
+        </a>
+        <a class="flex items-center gap-md px-4 py-2 text-error hover:bg-error-container rounded-lg" href="{{ url_for('auth.logout') }}">
+            <span class="material-symbols-outlined">logout</span>
+            <span class="text-label-md">Logout</span>
+        </a>
+    </div>
+</nav>
+
+<!-- Main Content -->
+<main class="lg:ml-64 pt-16 min-h-screen bg-surface">
+    <div class="p-xl">
+        <!-- Page Header -->
+        <div class="mb-xl">
+            <h1 class="text-headline-lg font-bold text-primary">Security Dashboard</h1>
+            <p class="text-body-md text-on-surface-variant mt-1">Overview of file access management system</p>
+        </div>
+        
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-md mb-xl">
+            <!-- Total Users -->
+            <div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant">
+                <div class="flex justify-between items-start mb-sm">
+                    <div class="p-2 bg-surface-container-high rounded-lg text-primary">
+                        <span class="material-symbols-outlined">group</span>
+                    </div>
+                    <span class="text-label-md font-medium bg-primary-fixed text-on-primary-fixed px-2 py-0.5 rounded-full">Total</span>
+                </div>
+                <h3 class="text-label-md text-on-surface-variant uppercase tracking-wider">Total Users</h3>
+                <p class="text-headline-md font-bold text-primary mt-1">{{ stats.total }}</p>
+            </div>
+            
+            <!-- Active Users -->
+            <div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant">
+                <div class="flex justify-between items-start mb-sm">
+                    <div class="p-2 bg-primary/10 rounded-lg text-primary">
+                        <span class="material-symbols-outlined">verified_user</span>
+                    </div>
+                    <span class="text-label-md font-medium bg-primary-fixed text-on-primary-fixed px-2 py-0.5 rounded-full animate-pulse">Active</span>
+                </div>
+                <h3 class="text-label-md text-on-surface-variant uppercase tracking-wider">Active Users</h3>
+                <p class="text-headline-md font-bold text-primary mt-1">{{ stats.active }}</p>
+            </div>
+            
+            <!-- Files Managed -->
+            <div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant">
+                <div class="flex justify-between items-start mb-sm">
+                    <div class="p-2 bg-surface-container-highest rounded-lg text-on-surface">
+                        <span class="material-symbols-outlined">file_open</span>
+                    </div>
+                    <span class="text-label-md font-medium bg-surface-container text-on-surface-variant px-2 py-0.5 rounded-full">Managed</span>
+                </div>
+                <h3 class="text-label-md text-on-surface-variant uppercase tracking-wider">Files Managed</h3>
+                <p class="text-headline-md font-bold text-primary mt-1">{{ stats.total_files }}</p>
+            </div>
+            
+            <!-- Suspended -->
+            <div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant">
+                <div class="flex justify-between items-start mb-sm">
+                    <div class="p-2 bg-error-container rounded-lg text-error">
+                        <span class="material-symbols-outlined">block</span>
+                    </div>
+                    <span class="text-label-md font-medium bg-error-container text-on-error-container px-2 py-0.5 rounded-full">Alert</span>
+                </div>
+                <h3 class="text-label-md text-on-surface-variant uppercase tracking-wider">Suspended</h3>
+                <p class="text-headline-md font-bold text-primary mt-1">{{ stats.suspended }}</p>
+            </div>
+        </div>
+        
+        <!-- Quick Actions & Recent Activity -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-xl">
+            <!-- Quick Actions -->
+            <div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-lg">
+                <h2 class="text-headline-sm font-bold text-primary mb-lg">Quick Actions</h2>
+                <div class="grid grid-cols-2 gap-md">
+                    <a href="{{ url_for('users.index') }}" class="flex items-center gap-md p-md bg-surface rounded-lg border border-outline-variant hover:bg-surface-container transition-colors">
+                        <span class="material-symbols-outlined text-primary">person_add</span>
+                        <span class="text-body-md font-medium">Add User</span>
+                    </a>
+                    <a href="{{ url_for('files.index') }}" class="flex items-center gap-md p-md bg-surface rounded-lg border border-outline-variant hover:bg-surface-container transition-colors">
+                        <span class="material-symbols-outlined text-primary">folder_open</span>
+                        <span class="text-body-md font-medium">Browse Files</span>
+                    </a>
+                    <a href="{{ url_for('users.index') }}" class="flex items-center gap-md p-md bg-surface rounded-lg border border-outline-variant hover:bg-surface-container transition-colors">
+                        <span class="material-symbols-outlined text-primary">manage_accounts</span>
+                        <span class="text-body-md font-medium">Manage Access</span>
+                    </a>
+                    <a href="{{ url_for('dashboard.index') }}" class="flex items-center gap-md p-md bg-surface rounded-lg border border-outline-variant hover:bg-surface-container transition-colors">
+                        <span class="material-symbols-outlined text-primary">history</span>
+                        <span class="text-body-md font-medium">View Logs</span>
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Recent Activity -->
+            <div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-lg">
+                <h2 class="text-headline-sm font-bold text-primary mb-lg">Recent Activity</h2>
+                {% if recent_activity %}
+                    <div class="space-y-md">
+                        {% for activity in recent_activity %}
+                            <div class="flex items-center gap-md p-sm border-b border-outline-variant/50 last:border-0">
+                                <div class="p-2 bg-primary/10 rounded-lg">
+                                    <span class="material-symbols-outlined text-primary text-sm">file_copy</span>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-body-md font-medium truncate">{{ activity.file_name }}</p>
+                                    <p class="text-label-md text-on-surface-variant">User ID: {{ activity.telegram_user_id }} - {{ activity.permission_level }}</p>
+                                </div>
+                                <span class="text-label-md text-on-surface-variant whitespace-nowrap">
+                                    {{ activity.granted_at[:10] if activity.granted_at else 'N/A' }}
+                                </span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-xl text-on-surface-variant">
+                        <span class="material-symbols-outlined text-4xl mb-md">history</span>
+                        <p class="text-body-md">No recent activity</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>File Browser | DEFEND ID ACCESS</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;900&amp;family=Geist:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "tertiary-fixed-dim": "#c4c7ca",
+                    "on-tertiary-container": "#aeb1b4",
+                    "on-tertiary": "#ffffff",
+                    "tertiary-fixed": "#e0e3e6",
+                    "surface-container-lowest": "#ffffff",
+                    "primary-fixed": "#d7e3ff",
+                    "surface-tint": "#3c5e97",
+                    "on-surface-variant": "#434750",
+                    "inverse-on-surface": "#edf0ff",
+                    "primary": "#002c5f",
+                    "on-primary-fixed": "#001b3e",
+                    "on-background": "#141b2c",
+                    "outline": "#747781",
+                    "on-error": "#ffffff",
+                    "on-secondary": "#ffffff",
+                    "secondary-fixed": "#ffdad4",
+                    "primary-fixed-dim": "#aac7ff",
+                    "inverse-primary": "#aac7ff",
+                    "surface-variant": "#dbe2f9",
+                    "secondary-fixed-dim": "#ffb4a8",
+                    "tertiary-container": "#414447",
+                    "surface": "#f9f9ff",
+                    "on-error-container": "#93000a",
+                    "background": "#f9f9ff",
+                    "outline-variant": "#c3c6d1",
+                    "surface-container-high": "#e0e8ff",
+                    "surface-container-highest": "#dbe2f9",
+                    "surface-container": "#e9edff",
+                    "error": "#ba1a1a",
+                    "on-primary-fixed-variant": "#21467d",
+                    "secondary": "#bc0100",
+                    "on-primary": "#ffffff",
+                    "inverse-surface": "#293041",
+                    "primary-container": "#1d437a",
+                    "secondary-container": "#eb0000",
+                    "on-secondary-fixed-variant": "#930100",
+                    "on-secondary-fixed": "#410000",
+                    "on-surface": "#141b2c",
+                    "on-secondary-container": "#fffbff",
+                    "tertiary": "#2a2e30",
+                    "error-container": "#ffdad6",
+                    "surface-dim": "#d2daf0",
+                    "on-tertiary-fixed": "#191c1e",
+                    "surface-container-low": "#f1f3ff",
+                    "surface-bright": "#f9f9ff",
+                    "on-primary-container": "#90b1ef",
+                    "on-tertiary-fixed-variant": "#44474a"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "gutter": "20px",
+                    "margin-mobile": "16px",
+                    "xs": "8px",
+                    "margin-desktop": "40px",
+                    "sm": "12px",
+                    "lg": "24px",
+                    "base": "4px",
+                    "xl": "32px",
+                    "md": "16px"
+            },
+            "fontFamily": {
+                    "headline-sm": ["Hanken Grotesk"],
+                    "body-md": ["Hanken Grotesk"],
+                    "label-md": ["Geist"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "body-lg": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Hanken Grotesk"],
+                    "mono-sm": ["Geist"]
+            },
+            "fontSize": {
+                    "headline-sm": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "mono-sm": ["13px", {"lineHeight": "18px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            font-family: 'Hanken Grotesk', sans-serif;
+            background-color: #f9f9ff;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Custom scrollbar for high density scanning */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f3ff; }
+        ::-webkit-scrollbar-thumb { background: #c3c6d1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #747781; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface overflow-hidden">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-gutter h-16 bg-surface border-b border-outline-variant">
+<div class="flex items-center gap-md">
+<span class="text-headline-md font-headline-md font-bold text-secondary">DEFEND ID ACCESS</span>
+<div class="hidden md:flex ml-lg items-center bg-surface-container-low px-sm py-1 rounded-lg border border-outline-variant">
+<span class="material-symbols-outlined text-outline" style="font-size: 20px;">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-label-md font-label-md w-64 placeholder:text-on-surface-variant" placeholder="Search files, users, or permissions..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<button class="material-symbols-outlined p-2 hover:bg-surface-container-low rounded-full text-on-surface-variant">notifications</button>
+<button class="material-symbols-outlined p-2 hover:bg-surface-container-low rounded-full text-on-surface-variant">help_outline</button>
+<div class="h-8 w-8 rounded-full bg-primary-container overflow-hidden border border-outline-variant ml-xs">
+<img alt="Administrator Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeVk4caRDDEwD5KaFlga8t5Is1saAouP1xvokMMQWNd9zdL_rEbegA5IkKbE5DcAQC2rsSsC4DjxL7TQ8dj-scwLENdHULXdxgGwEWYHCNNc2lV3zTGBLLTYxXeKe932sr_Tv5WNd4NtQVjiObs9PlrqFOFTU9tg_EWZUAWfEt6ua0t839XS1glMwMwo64ggGAoxtGiHBun5Wr0mw48Vh8tvgBb1gijVFMw0bXJpetNt1RPz9JxHvoP5hvJV1TYkl1sa2rxAmx8CE"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<nav class="fixed left-0 top-0 h-full w-64 hidden lg:flex flex-col pt-20 pb-8 px-4 bg-surface-container-lowest border-r border-outline-variant z-40">
+<div class="mb-lg px-2">
+<h2 class="text-headline-sm font-headline-sm font-black text-secondary">Security Console</h2>
+<p class="text-label-md font-label-md text-on-surface-variant opacity-70">File Access Mgmt</p>
+</div>
+<div class="flex flex-col gap-1 flex-grow">
+<!-- Navigation Items -->
+<a class="flex items-center gap-md px-4 py-3 text-on-surface-variant hover:bg-surface-container transition-transform duration-200 hover:translate-x-1 rounded-lg" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-body-md font-body-md">Dashboard</span>
+</a>
+<a class="flex items-center gap-md px-4 py-3 text-on-surface-variant hover:bg-surface-container transition-transform duration-200 hover:translate-x-1 rounded-lg" href="#">
+<span class="material-symbols-outlined">group</span>
+<span class="text-body-md font-body-md">User Management</span>
+</a>
+<!-- Active State -->
+<a class="flex items-center gap-md px-4 py-3 bg-primary-container text-on-primary-container font-bold rounded-lg scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined">folder_open</span>
+<span class="text-body-md font-body-md">File Browser</span>
+</a>
+<a class="flex items-center gap-md px-4 py-3 text-on-surface-variant hover:bg-surface-container transition-transform duration-200 hover:translate-x-1 rounded-lg" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-body-md font-body-md">Settings</span>
+</a>
+</div>
+<div class="mt-auto border-t border-outline-variant pt-lg flex flex-col gap-1">
+<button class="w-full py-3 mb-md bg-secondary text-white rounded-lg font-bold text-label-md hover:opacity-90 transition-opacity">
+                Revoke All Access
+            </button>
+<a class="flex items-center gap-md px-4 py-2 text-on-surface-variant hover:bg-surface-container rounded-lg" href="#">
+<span class="material-symbols-outlined">contact_support</span>
+<span class="text-label-md font-label-md">Support</span>
+</a>
+<a class="flex items-center gap-md px-4 py-2 text-on-surface-variant hover:bg-surface-container rounded-lg text-error" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span class="text-label-md font-label-md">Logout</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="lg:ml-64 pt-16 h-screen flex flex-col overflow-hidden bg-surface">
+<!-- Breadcrumbs & Toolbar -->
+<div class="px-gutter py-md bg-surface-container-low flex items-center justify-between border-b border-outline-variant">
+<nav class="flex items-center gap-xs">
+<a class="text-primary hover:underline text-label-md font-label-md flex items-center" href="#">
+<span class="material-symbols-outlined mr-base" style="font-size: 16px;">home</span> Root
+                </a>
+<span class="material-symbols-outlined text-outline text-xs">chevron_right</span>
+<a class="text-primary hover:underline text-label-md font-label-md" href="#">Telegram Assets</a>
+<span class="material-symbols-outlined text-outline text-xs">chevron_right</span>
+<span class="text-on-surface-variant text-label-md font-label-md">Q3 Sensitive Data</span>
+</nav>
+<div class="flex items-center gap-sm">
+<button class="flex items-center gap-base px-3 py-1.5 border border-outline-variant rounded bg-white text-label-md font-label-md hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined" style="font-size: 18px;">filter_list</span> Filter
+                </button>
+<div class="flex border border-outline-variant rounded bg-white overflow-hidden">
+<button class="p-1.5 bg-primary-container text-on-primary-container"><span class="material-symbols-outlined" style="font-size: 18px;">list</span></button>
+<button class="p-1.5 hover:bg-surface-container"><span class="material-symbols-outlined" style="font-size: 18px;">grid_view</span></button>
+</div>
+</div>
+</div>
+<!-- File Browser Table (High Density) -->
+<div class="flex-grow overflow-auto">
+<table class="w-full text-left border-collapse">
+<thead class="sticky top-0 bg-surface-container-high z-10">
+<tr class="border-b border-outline-variant">
+<th class="px-gutter py-3 w-12 text-center">
+<input class="rounded border-outline text-primary focus:ring-primary h-4 w-4" id="selectAll" type="checkbox"/>
+</th>
+<th class="px-4 py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Name</th>
+<th class="px-4 py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Type</th>
+<th class="px-4 py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Access Status</th>
+<th class="px-4 py-3 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Modified</th>
+<th class="px-gutter py-3 text-right"></th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant bg-white">
+<!-- File Row 1 -->
+<tr class="hover:bg-surface-container-low transition-colors group cursor-pointer">
+<td class="px-gutter py-3 text-center">
+<input class="file-check rounded border-outline text-primary focus:ring-primary h-4 w-4" type="checkbox"/>
+</td>
+<td class="px-4 py-3">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-primary" style="font-size: 24px;">picture_as_pdf</span>
+<span class="text-body-md font-body-md font-bold">Q3_Operations_Report_v2.pdf</span>
+</div>
+</td>
+<td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">PDF Document</td>
+<td class="px-4 py-3">
+<span class="px-2 py-1 rounded bg-surface-container-high text-primary text-[10px] font-bold uppercase">Restricted</span>
+</td>
+<td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">Oct 24, 2023 • 14:22</td>
+<td class="px-gutter py-3 text-right">
+<button class="material-symbols-outlined opacity-0 group-hover:opacity-100 text-outline hover:text-primary transition-opacity">more_vert</button>
+</td>
+</tr>
+<!-- File Row 2 -->
+<tr class="hover:bg-surface-container-low transition-colors group cursor-pointer">
+<td class="px-gutter py-3 text-center">
+<input class="file-check rounded border-outline text-primary focus:ring-primary h-4 w-4" type="checkbox"/>
+</td>
+<td class="px-4 py-3">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-primary" style="font-size: 24px;">table_chart</span>
+<span class="text-body-md font-body-md font-bold">Credential_Log_Encrypted.xlsx</span>
+</div>
+</td>
+<td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">Spreadsheet</td>
+<td class="px-4 py-3">
+<span class="px-2 py-1 rounded bg-error-container text-on-error-container text-[10px] font-bold uppercase">Critical</span>
+</td>
+<td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">Yesterday • 09:15</td>
+<td class="px-gutter py-3 text-right">
+<button class="material-symbols-outlined opacity-0 group-hover:opacity-100 text-outline hover:text-primary transition-opacity">more_vert</button>
+</td>
+</tr>
+<!-- File Row 3 (Folder) -->
+<tr class="hover:bg-surface-container-low transition-colors group cursor-pointer">
+<td class="px-gutter py-3 text-center">
+<input class="file-check rounded border-outline text-primary focus:ring-primary h-4 w-4" type="checkbox"/>
+</td>
+<td class="px-4 py-3">
+<div class="flex items-center gap-md">
+<span class="material-symbols-outlined text-primary" style="font-size: 24px;">folder</span>
+<span class="text-body-md font-body-md font-bold">Archive_2022</span>
+</div>
+</td>
+<td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">Directory</td>
+<td class="px-4 py-3">
+<span class="px-2 py-1 rounded bg-surface-container text-on-surface-variant text-[10px] font-bold uppercase">Public</span>
+</td>
+<td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">Sep 12, 2023 • 11:45</td>
+<td class="px-gutter py-3 text-right">
+<button class="material-symbols-outlined opacity-0 group-hover:opacity-100 text-outline hover:text-primary transition-opacity">more_vert</button>
+</td>
+</tr>
+<!-- Repeat for density -->
+<tr class="hover:bg-surface-container-low transition-colors group cursor-pointer">
+<td class="px-gutter py-3 text-center"><input class="file-check rounded border-outline text-primary focus:ring-primary h-4 w-4" type="checkbox"/></td>
+<td class="px-4 py-3"><div class="flex items-center gap-md"><span class="material-symbols-outlined text-primary" style="font-size: 24px;">image</span><span class="text-body-md font-body-md font-bold">Network_Topology_Map.png</span></div></td>
+<td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">Image File</td>
+<td class="px-4 py-3"><span class="px-2 py-1 rounded bg-surface-container-high text-primary text-[10px] font-bold uppercase">Restricted</span></td>
+<td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">Oct 20, 2023 • 18:30</td>
+<td class="px-gutter py-3 text-right"><button class="material-symbols-outlined opacity-0 group-hover:opacity-100 text-outline hover:text-primary transition-opacity">more_vert</button></td>
+</tr>
+<!-- Placeholder Rows -->
+<script>
+                        const tbody = document.querySelector('tbody');
+                        const files = [
+                            { name: 'System_Audit_Logs.log', type: 'System Log', status: 'Restricted', color: 'bg-surface-container-high', icon: 'description' },
+                            { name: 'Telegram_Bot_Config.json', type: 'JSON Config', status: 'Critical', color: 'bg-error-container', icon: 'settings_ethernet' },
+                            { name: 'Client_NDA_Template.docx', type: 'Word Doc', status: 'Public', color: 'bg-surface-container', icon: 'article' },
+                            { name: 'Server_Snapshot_04.vmdk', type: 'Disk Image', status: 'Restricted', color: 'bg-surface-container-high', icon: 'save' },
+                            { name: 'Compliance_Videos', type: 'Directory', status: 'Internal', color: 'bg-surface-container-high', icon: 'folder' }
+                        ];
+                        files.forEach(file => {
+                            const row = document.createElement('tr');
+                            row.className = 'hover:bg-surface-container-low transition-colors group cursor-pointer border-t border-outline-variant';
+                            row.innerHTML = `
+                                <td class="px-gutter py-3 text-center"><input type="checkbox" class="file-check rounded border-outline text-primary focus:ring-primary h-4 w-4"></td>
+                                <td class="px-4 py-3"><div class="flex items-center gap-md"><span class="material-symbols-outlined text-primary" style="font-size: 24px;">${file.icon}</span><span class="text-body-md font-body-md font-bold">${file.name}</span></div></td>
+                                <td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">${file.type}</td>
+                                <td class="px-4 py-3"><span class="px-2 py-1 rounded ${file.color} text-[10px] font-bold uppercase">${file.status}</span></td>
+                                <td class="px-4 py-3 text-label-md font-label-md text-on-surface-variant">Oct 19, 2023 • 10:10</td>
+                                <td class="px-gutter py-3 text-right"><button class="material-symbols-outlined opacity-0 group-hover:opacity-100 text-outline hover:text-primary transition-opacity">more_vert</button></td>
+                            `;
+                            tbody.appendChild(row);
+                        });
+                    </script>
+</tbody>
+</table>
+</div>
+</main>
+<!-- Floating Action Bar (Selective Visibility) -->
+<div class="fixed bottom-gutter left-1/2 -translate-x-1/2 flex items-center gap-lg bg-inverse-surface text-inverse-on-surface px-xl py-md rounded-full shadow-2xl z-50 transform translate-y-32 transition-transform duration-300 ease-in-out" id="selectionBar">
+<div class="flex items-center gap-md border-r border-outline-variant pr-lg">
+<span class="font-bold text-headline-sm" id="selectionCount">0</span>
+<span class="text-label-md opacity-80 uppercase tracking-widest">Selected</span>
+</div>
+<div class="flex items-center gap-md">
+<button class="flex items-center gap-xs px-lg py-2 bg-primary-container text-on-primary-container rounded-full font-bold text-label-md hover:scale-105 transition-transform">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+                Grant Access
+            </button>
+<button class="flex items-center gap-xs px-lg py-2 border border-outline text-inverse-on-surface rounded-full font-bold text-label-md hover:bg-error hover:border-error transition-all">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">gpp_bad</span>
+                Revoke Access
+            </button>
+<div class="w-px h-6 bg-outline-variant mx-xs"></div>
+<button class="material-symbols-outlined p-2 hover:bg-tertiary-container rounded-full" title="More Actions">more_horiz</button>
+<button class="material-symbols-outlined p-2 hover:bg-tertiary-container rounded-full text-error" id="clearSelection" title="Clear Selection">close</button>
+</div>
+</div>
+<!-- Interaction Script -->
+<script>
+        const selectionBar = document.getElementById('selectionBar');
+        const selectionCount = document.getElementById('selectionCount');
+        const checkboxes = document.querySelectorAll('.file-check');
+        const selectAll = document.getElementById('selectAll');
+        const clearSelection = document.getElementById('clearSelection');
+
+        function updateSelection() {
+            const selected = document.querySelectorAll('.file-check:checked');
+            const count = selected.length;
+            
+            selectionCount.textContent = count;
+            
+            if (count > 0) {
+                selectionBar.classList.remove('translate-y-32');
+            } else {
+                selectionBar.classList.add('translate-y-32');
+            }
+
+            // Highlighting rows
+            checkboxes.forEach(cb => {
+                const row = cb.closest('tr');
+                if (cb.checked) {
+                    row.classList.add('bg-primary-fixed', 'hover:bg-primary-fixed');
+                } else {
+                    row.classList.remove('bg-primary-fixed', 'hover:bg-primary-fixed');
+                }
+            });
+        }
+
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', updateSelection);
+        });
+
+        selectAll.addEventListener('change', () => {
+            checkboxes.forEach(cb => {
+                cb.checked = selectAll.checked;
+            });
+            updateSelection();
+        });
+
+        clearSelection.addEventListener('click', () => {
+            checkboxes.forEach(cb => cb.checked = false);
+            selectAll.checked = false;
+            updateSelection();
+        });
+
+        // Click on row selects checkbox
+        document.querySelectorAll('tbody tr').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'SPAN') {
+                    const cb = row.querySelector('.file-check');
+                    cb.checked = !cb.checked;
+                    updateSelection();
+                }
+            });
+        });
+    </script>
+</body></html>

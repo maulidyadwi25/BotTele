@@ -12,6 +12,16 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import gsheets_service as gs
 from ai_service import get_ai_provider
 
+# Access Manager integration for permission checking
+import sys
+sys.path.insert(0, 'access_manager')
+from access_manager.models.bot_db import TelegramUser, get_session, init_db
+from access_manager.services.bot_permission_service import BotPermissionService
+
+# Initialize database tables and permission service
+init_db()
+permission_service = BotPermissionService()
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_PARSE_MODE = os.getenv("TELEGRAM_PARSE_MODE", "HTML")  # default HTML
 FOLDER_ID = os.getenv('FOLDER_ID', '')
@@ -49,34 +59,81 @@ def decode_callback_data(data):
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menampilkan daftar file spreadsheet dan folder sebagai inline keyboard buttons."""
+    
+    telegram_id = str(update.effective_user.id)
+    username = update.effective_user.username
+    display_name = update.effective_user.full_name
+    
+    print(f"[DEBUG] start_command - User: {username} ({telegram_id})")
+    
+    # Check if user is registered in access manager
+    session = get_session()
+    try:
+        existing_user = session.query(TelegramUser).filter_by(telegram_id=telegram_id).first()
+        
+        if not existing_user:
+            # User NOT registered - show message and return
+            print(f"[DEBUG] User {username} ({telegram_id}) is NOT registered in access manager")
+            await update.message.reply_text(
+                "Maaf, Anda belum terdaftar dalam sistem. Silakan hubungi administrator untuk mendapatkan akses."
+            )
+            return
+        
+        print(f"[DEBUG] User {username} found in DB - status: {existing_user.status}")
+        
+        # Check if user has global access
+        has_global = permission_service.has_global_access(telegram_id)
+        print(f"[DEBUG] User {username} has_global_access: {has_global}")
+        
+    finally:
+        session.close()
+    
     keyboard = []
     
     # Ambil daftar file spreadsheet dan folder
     spreadsheet_files = gs.get_spreadsheet_files()
     
     if not spreadsheet_files:
-        await update.message.reply_text("❌ Tidak ada file spreadsheet yang ditemukan di folder.")
+        await update.message.reply_text("Tidak ada file spreadsheet yang ditemukan di folder.")
         return
     
-    # Buat button untuk setiap file dan folder
+    print(f"[DEBUG] Total files/folders from Drive: {len(spreadsheet_files)}")
+    
+    # Buat button untuk setiap file dan folder - HANYA yang user punya akses
     for file in spreadsheet_files:
         file_id = file['id']
         file_name = file['name']
         
+        # Check permission for this specific file/folder
+        has_permission = permission_service.has_file_permission(telegram_id, file_id)
+        print(f"[DEBUG] User {username} has_permission for '{file_name}': {has_permission}")
+        
+        # Skip files user doesn't have permission to
+        if not has_permission:
+            continue
+        
         # Tambahkan icon folder jika itu adalah folder
         if file.get('is_folder', False):
-            display_name = f"📁 {file_name}"
+            display_name = f"[Folder] {file_name}"
             callback_data = encode_callback_data(f"folder_{file_id}")
         else:
             # Tambahkan icon sheet jika itu adalah file spreadsheet
             parent_folder_name = file.get('parent_folder_name')
             if parent_folder_name:
-                display_name = f"📄 {file_name} (dari folder: {parent_folder_name})"
+                display_name = f"[File] {file_name} (dari folder: {parent_folder_name})"
             else:
-                display_name = f"📄 {file_name}"
+                display_name = f"[File] {file_name}"
             callback_data = encode_callback_data(f"file_{file_id}")
         
         keyboard.append([InlineKeyboardButton(display_name, callback_data=callback_data)])
+    
+    print(f"[DEBUG] User {username} - filtered buttons count: {len(keyboard)}")
+    
+    if not keyboard:
+        await update.message.reply_text(
+            "Anda tidak memiliki akses ke file manapun. Silakan hubungi administrator."
+        )
+        return
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -124,9 +181,16 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     # Decode callback data
     data = decode_callback_data(query.data)
     
+    telegram_id = str(update.effective_user.id)
+    username = update.effective_user.username
+    
+    print(f"[DEBUG] handle_callback_query - User: {username} ({telegram_id}), data: {data}")
+    
     if data.startswith("folder_"):
         # User memilih folder, tampilkan isi folder tersebut
         folder_id = data.split("_", 1)[1]
+        
+        print(f"[DEBUG] User {username} opening folder: {folder_id}")
         
         # Simpan folder ID saat ini di user_data
         context.user_data['current_folder_id'] = folder_id
@@ -134,25 +198,39 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         # Ambil daftar file dan folder dalam folder tersebut
         files = gs.get_files_in_folder(folder_id)
         
+        print(f"[DEBUG] User {username} - raw files in folder: {len(files) if files else 0}")
+        
         if not files:
             await query.edit_message_text("❌ Folder ini kosong atau tidak dapat diakses.")
             return
         
         keyboard = []
+        filtered_count = 0
         for file in files:
             file_id = file['id']
             file_name = file['name']
             
+            # Check permission for this file/folder
+            has_permission = permission_service.has_file_permission(telegram_id, file_id)
+            print(f"[DEBUG] User {username} has_permission for '{file_name}': {has_permission}")
+            
+            # Skip files user doesn't have permission to
+            if not has_permission:
+                filtered_count += 1
+                continue
+            
             # Tambahkan icon folder jika itu adalah folder
             if file.get('is_folder', False):
-                display_name = f"📁 {file_name}"
+                display_name = f"[Folder] {file_name}"
                 callback_data = encode_callback_data(f"folder_{file_id}")
             else:
                 # Tambahkan icon sheet jika itu adalah file spreadsheet
-                display_name = f"📄 {file_name}"
+                display_name = f"[File] {file_name}"
                 callback_data = encode_callback_data(f"file_{file_id}")
             
             keyboard.append([InlineKeyboardButton(display_name, callback_data=callback_data)])
+        
+        print(f"[DEBUG] User {username} - filtered out {filtered_count} items, remaining: {len(keyboard)}")
         
         # Tambahkan tombol kembali ke folder parent
         # Gunakan parent_folder_id dari file pertama (semua file di folder yang sama memiliki parent yang sama)
@@ -165,17 +243,19 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             keyboard.append([InlineKeyboardButton("← Kembali ke Daftar Utama", callback_data="back_to_root")])
         
+        # Check if there are any accessible files (excluding back button)
+        accessible_files = [btn for btn in keyboard if not btn.text.startswith("←")]
+        
+        if not accessible_files:
+            # No accessible files - show message
+            print(f"[DEBUG] User {username} has no access to any items in folder")
+            await query.answer("Anda tidak memiliki akses ke item manapun di folder ini.", show_alert=True)
+            return
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Tambahkan timestamp dan random number untuk membuat konten unik
-        timestamp = int(time.time())
-        random_num = random.randint(1000, 9999)
-        folder_num = len(files)
-        
-        # Buat deskripsi folder yang unik
-        folder_desc = f"📂 **Isi Folder** ({folder_num} item)\n"
-        folder_desc += f"📂 ID: {folder_id[:8]}...\n"
-        folder_desc += f"⏱️ {timestamp}-{random_num}\n\n"
+        # Buat deskripsi folder
+        folder_desc = f"📂 **Isi Folder** ({len(accessible_files)} item)\n\n"
         folder_desc += f"Silakan pilih file atau folder yang ingin Anda lihat:"
         
         await query.edit_message_text(
@@ -188,8 +268,18 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         # User memilih file, tampilkan daftar sheet
         file_id = data.split("_", 1)[1]
         
+        print(f"[DEBUG] User {username} selecting file: {file_id}")
+        
+        # Check permission before showing file
+        if not permission_service.has_file_permission(telegram_id, file_id):
+            print(f"[DEBUG] User {username} DENIED access to file: {file_id}")
+            await query.answer("Access denied. You don't have permission.", show_alert=True)
+            return
+        
         # Ambil nama file
         file_name = gs.get_file_name(file_id)
+        
+        print(f"[DEBUG] User {username} accessing file: {file_name}")
         
         # Simpan selected file di context
         context.user_data['selected_file_id'] = file_id
@@ -229,11 +319,13 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         file_id = parts[1] if len(parts) > 1 else ""
         sheet_name = parts[2] if len(parts) > 2 else ""
         
-        # Debug: print apa yang diterima
-        print(f"DEBUG callback data: {data}")
-        print(f"DEBUG decoded: {data_decoded}")
-        print(f"DEBUG parts: {parts}")
-        print(f"DEBUG file_id: {file_id}, sheet_name: {sheet_name}")
+        print(f"[DEBUG] User {username} accessing sheet: {sheet_name} in file: {file_id}")
+        
+        # Check permission before showing actions
+        if not permission_service.has_file_permission(telegram_id, file_id):
+            print(f"[DEBUG] User {username} DENIED access to file: {file_id}")
+            await query.answer("Access denied. You don't have permission.", show_alert=True)
+            return
         
         # Simpan informasi sheet untuk digunakan nanti
         context.user_data['selected_file_id'] = file_id
@@ -241,17 +333,17 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         
         # Tampilkan pilihan aksi
         keyboard = [
-            [InlineKeyboardButton("📋 Ambil Data Lengkap", callback_data=encode_callback_data(f"action|data|{file_id}|{sheet_name}"))],
-            [InlineKeyboardButton("📊 Hitung Rata-rata", callback_data=encode_callback_data(f"action|avg|{file_id}|{sheet_name}"))],
-            [InlineKeyboardButton("🔢 Hitung Total", callback_data=encode_callback_data(f"action|total|{file_id}|{sheet_name}"))],
-            [InlineKeyboardButton("📈 Statistik", callback_data=encode_callback_data(f"action|stats|{file_id}|{sheet_name}"))],
-            [InlineKeyboardButton("← Kembali ke Daftar Sheet", callback_data=encode_callback_data(f"file|{file_id}"))]
+            [InlineKeyboardButton("Ambil Data Lengkap", callback_data=encode_callback_data(f"action|data|{file_id}|{sheet_name}"))],
+            [InlineKeyboardButton("Hitung Rata-rata", callback_data=encode_callback_data(f"action|avg|{file_id}|{sheet_name}"))],
+            [InlineKeyboardButton("Hitung Total", callback_data=encode_callback_data(f"action|total|{file_id}|{sheet_name}"))],
+            [InlineKeyboardButton("Statistik", callback_data=encode_callback_data(f"action|stats|{file_id}|{sheet_name}"))],
+            [InlineKeyboardButton("<< Kembali ke Daftar Sheet", callback_data=encode_callback_data(f"file|{file_id}"))]
         ]
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(
-            f"📄 **Sheet: {sheet_name}**\n\n"
+            f"**Sheet: {sheet_name}**\n\n"
             f"Pilih aksi yang ingin Anda lakukan:",
             reply_markup=reply_markup,
             parse_mode=TELEGRAM_PARSE_MODE
@@ -263,6 +355,14 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         action_type = parts[1]
         file_id = parts[2]
         sheet_name = parts[3]
+        
+        print(f"[DEBUG] User {username} action: {action_type} on sheet: {sheet_name} file: {file_id}")
+        
+        # Check permission before showing data
+        if not permission_service.has_file_permission(telegram_id, file_id):
+            print(f"[DEBUG] User {username} DENIED access to file: {file_id}")
+            await query.answer("Access denied. You don't have permission.", show_alert=True)
+            return
         
         # Ambil data dari sheet tertentu
         try:
@@ -405,41 +505,73 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         # Kembali ke daftar file utama
         keyboard = []
         
+        print(f"[DEBUG] User {username} going back to root files list")
+        
         spreadsheet_files = gs.get_spreadsheet_files()
         
         if not spreadsheet_files:
-            await query.edit_message_text("❌ Tidak ada file spreadsheet yang ditemukan di folder.")
+            await query.edit_message_text("Tidak ada file spreadsheet yang ditemukan di folder.")
             return
         
+        # Filter files based on user permissions
         for file in spreadsheet_files:
             file_id = file['id']
             file_name = file['name']
             
+            # Check permission for this file/folder
+            has_permission = permission_service.has_file_permission(telegram_id, file_id)
+            if not has_permission:
+                continue
+            
             # Tambahkan icon folder jika itu adalah folder
             if file.get('is_folder', False):
-                display_name = f"📁 {file_name}"
+                display_name = f"[Folder] {file_name}"
                 callback_data = encode_callback_data(f"folder_{file_id}")
             else:
                 # Tambahkan icon sheet jika itu adalah file spreadsheet
                 parent_folder_name = file.get('parent_folder_name')
                 if parent_folder_name:
-                    display_name = f"📄 {file_name} (dari folder: {parent_folder_name})"
+                    display_name = f"[File] {file_name} (dari folder: {parent_folder_name})"
                 else:
-                    display_name = f"📄 {file_name}"
+                    display_name = f"[File] {file_name}"
                 callback_data = encode_callback_data(f"file_{file_id}")
             
             keyboard.append([InlineKeyboardButton(display_name, callback_data=callback_data)])
         
+        if not keyboard:
+            print(f"[DEBUG] User {username} has no accessible files")
+            await query.answer("Anda tidak memiliki akses ke file manapun.", show_alert=True)
+            return
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
-            "📂 **Daftar File Spreadsheet dan Folder**\n\n"
+            "**Daftar File Spreadsheet dan Folder**\n\n"
             "Silakan pilih file atau folder yang ingin Anda lihat:",
             reply_markup=reply_markup,
             parse_mode=TELEGRAM_PARSE_MODE
         )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = str(update.effective_user.id)
+    username = update.effective_user.username
+    
+    print(f"[DEBUG] handle_message - User: {username} ({telegram_id})")
+    
+    # Check if user is registered in access manager
+    session = get_session()
+    try:
+        existing_user = session.query(TelegramUser).filter_by(telegram_id=telegram_id).first()
+        
+        if not existing_user:
+            print(f"[DEBUG] Unregistered user {username} tried to send message")
+            await update.message.reply_text(
+                "Maaf, Anda belum terdaftar dalam sistem. Silakan hubungi administrator untuk mendapatkan akses."
+            )
+            return
+    finally:
+        session.close()
+    
     user_question = update.message.text.strip()
     if not user_question:
         return

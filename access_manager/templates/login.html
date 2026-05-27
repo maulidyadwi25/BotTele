@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Login | DEFEND ID ACCESS{% endblock %}
+
+{% block body %}
+<div class="min-h-screen flex items-center justify-center px-margin-mobile md:px-margin-desktop py-xl relative overflow-hidden bg-surface">
+    <!-- Atmospheric Background -->
+    <div class="absolute top-0 left-0 w-[600px] h-[600px] bg-gradient-to-br from-primary/5 to-transparent rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+    <div class="absolute bottom-0 right-0 w-[600px] h-[600px] bg-gradient-to-tl from-primary-container/10 to-transparent rounded-full translate-x-1/2 translate-y-1/2 pointer-events-none"></div>
+    
+    <div class="w-full max-w-[440px] relative">
+        <!-- Login Card -->
+        <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-xl md:p-[48px] shadow-lg">
+            <!-- Branding -->
+            <div class="flex flex-col items-center mb-xl">
+                <div class="w-16 h-16 bg-primary-container rounded-xl flex items-center justify-center mb-lg">
+                    <span class="material-symbols-outlined text-3xl text-on-primary-container">shield</span>
+                </div>
+                <div class="text-center">
+                    <h1 class="text-headline-md font-bold text-primary mb-base">Security Console</h1>
+                    <p class="text-body-md text-on-surface-variant">File Access Management System</p>
+                </div>
+            </div>
+            
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="mb-lg">
+                        {% for category, message in messages %}
+                            <div class="px-4 py-3 rounded-lg text-sm font-medium
+                                {% if category == 'error' %}bg-error-container text-on-error-container border border-error/20
+                                {% elif category == 'success' %}bg-primary-fixed text-on-primary-fixed border border-primary/20
+                                {% else %}bg-surface-container text-on-surface-variant border border-outline-variant{% endif %}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            <!-- Login Form -->
+            <form method="POST" class="space-y-lg">
+                <div class="space-y-xs">
+                    <label class="text-label-md font-label-md text-on-surface-variant flex justify-between" for="username">
+                        ADMINISTRATOR ID
+                        <span class="material-symbols-outlined text-[16px] text-primary">badge</span>
+                    </label>
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-md flex items-center pointer-events-none text-outline">
+                            <span class="material-symbols-outlined">person</span>
+                        </div>
+                        <input class="block w-full pl-xl pr-md py-md bg-surface border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all placeholder:text-outline-variant" 
+                               id="username" name="username" placeholder="Enter system identity" type="text" required/>
+                    </div>
+                </div>
+                
+                <div class="space-y-xs">
+                    <label class="text-label-md font-label-md text-on-surface-variant flex justify-between" for="password">
+                        ACCESS KEY
+                        <span class="material-symbols-outlined text-[16px] text-primary">key</span>
+                    </label>
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-md flex items-center pointer-events-none text-outline">
+                            <span class="material-symbols-outlined">lock</span>
+                        </div>
+                        <input class="block w-full pl-xl pr-md py-md bg-surface border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all placeholder:text-outline-variant" 
+                               id="password" name="password" placeholder="••••••••••••" type="password" required/>
+                    </div>
+                    <div class="flex justify-end pt-base">
+                        <a class="text-label-md font-label-md text-primary hover:underline transition-all" href="#">Forgot access key?</a>
+                    </div>
+                </div>
+                
+                <div class="pt-md">
+                    <button class="w-full py-md px-lg bg-primary text-on-primary font-headline-sm rounded-lg hover:bg-primary-container hover:text-on-primary-container active:scale-[0.98] transition-all flex items-center justify-center gap-sm" type="submit">
+                        Sign In
+                        <span class="material-symbols-outlined">arrow_forward</span>
+                    </button>
+                </div>
+            </form>
+            
+            <!-- Footer Status -->
+            <div class="mt-xl flex flex-col items-center gap-sm">
+                <div class="flex items-center gap-xs">
+                    <span class="h-2 w-2 rounded-full bg-primary animate-pulse"></span>
+                    <span class="text-label-md font-label-md text-on-surface-variant">System Status: Active & Secured</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Global Footer -->
+        <footer class="mt-xl flex flex-wrap justify-center gap-lg text-label-md font-label-md text-on-surface-variant">
+            <a class="hover:text-primary transition-colors" href="#">Privacy Policy</a>
+            <a class="hover:text-primary transition-colors" href="#">Audit Logs</a>
+            <a class="hover:text-primary transition-colors" href="#">Support Portal</a>
+        </footer>
+    </div>
+</div>
+
+<!-- Bottom Decorative Bar -->
+<div class="fixed bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-secondary to-primary-container"></div>
+{% endblock %}
