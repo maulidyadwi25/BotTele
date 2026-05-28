@@ -445,9 +445,94 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             sheet_str = "Data tidak ditemukan"
     else:
-        raw_data = get_sheet_data()
-        file_context = "Seluruh folder Google Drive"
-        sheet_str = raw_data if raw_data else "Data tidak ditemukan"
+        # No specific file/sheet selected - search ALL spreadsheets recursively
+        all_files = gs.get_all_spreadsheet_files_recursive()
+        
+        # Filter to only include spreadsheets (not folders)
+        accessible_files = [f for f in all_files if not f.get('is_folder', False)]
+        
+        print(f"[DEBUG] Total accessible files: {len(accessible_files)}")
+        
+        if not accessible_files:
+            await update.message.reply_text(
+                "Tidak ada file yang ditemukan. Gunakan /start untuk memilih file."
+            )
+            return
+        
+        # Check if user is searching for a specific file
+        search_keywords = ['buka', 'cari', 'search', 'find', 'buka file', 'cari file', 'show', 'tampilkan']
+        user_question_lower = user_question.lower()
+        
+        # Extract search query
+        search_query = None
+        for keyword in search_keywords:
+            if keyword in user_question_lower:
+                idx = user_question_lower.find(keyword)
+                query_after = user_question_lower[idx + len(keyword):].strip()
+                query_after = query_after.replace('file', '').replace(':', '').strip()
+                if query_after:
+                    search_query = query_after
+                    break
+        
+        matching_files = []
+        if search_query:
+            print(f"[DEBUG] Searching for files matching: '{search_query}'")
+            for file in accessible_files:
+                file_name_lower = file['name'].lower()
+                if search_query in file_name_lower:
+                    matching_files.append(file)
+            print(f"[DEBUG] Found {len(matching_files)} matching files")
+        
+        if matching_files:
+            files_to_process = matching_files
+        else:
+            files_to_process = accessible_files
+        
+        print(f"[DEBUG] Processing {len(files_to_process)} files")
+        
+        # Build data from accessible files and their sheets
+        all_data_parts = []
+        for file in files_to_process:
+            file_id = file['id']
+            file_name = file['name']
+            folder_path = file.get('folder_path', '')
+            
+            path_info = f" (Path: {folder_path})" if folder_path else ""
+            all_data_parts.append(f"\n📁 File: {file_name}{path_info}")
+            
+            # Get all sheets from this file (uses cache)
+            sheets = gs.get_sheets_from_file(file_id)
+            
+            if not sheets:
+                all_data_parts.append("   - Gagal mengambil sheet")
+                continue
+            
+            for sheet_name in sheets:
+                # Get sheet data (uses cache)
+                raw_data = gs.get_sheet_data(file_id, sheet_name)
+                
+                if raw_data:
+                    all_data_parts.append(f"   📄 Sheet: {sheet_name}")
+                    # Limit rows to avoid too much data
+                    rows_to_show = min(10, len(raw_data))
+                    for i in range(rows_to_show):
+                        if i == 0:
+                            row_data = ' | '.join([str(cell) for cell in raw_data[i]])
+                            all_data_parts.append(f"      Header: {row_data}")
+                        else:
+                            row_data = ' | '.join([str(cell) for cell in raw_data[i]])
+                            all_data_parts.append(f"      {row_data}")
+                    if len(raw_data) > rows_to_show:
+                        all_data_parts.append(f"      ... dan {len(raw_data) - rows_to_show} baris lainnya")
+                else:
+                    all_data_parts.append(f"   - Sheet '{sheet_name}' kosong atau gagal dibaca")
+        
+        sheet_str = "\n".join(all_data_parts) if all_data_parts else "Data tidak ditemukan"
+        
+        if matching_files:
+            file_context = f"Ditemukan {len(matching_files)} file yang cocok dengan '{search_query}'"
+        else:
+            file_context = f"Seluruh folder (total {len(accessible_files)} file)"
     
     system_prompt = f"""
     Anda adalah asisten yang membantu menjawab pertanyaan berdasarkan data berikut.

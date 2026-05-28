@@ -47,3 +47,62 @@ def list_spreadsheet_files(folder_id):
         })
     
     return files
+
+def get_all_spreadsheets_recursive(folder_id, depth=0, max_depth=10, current_path=""):
+    """
+    Recursively get all spreadsheet files from folder and its subfolders.
+    
+    Args:
+        folder_id: The ID of the folder to start from
+        depth: Current recursion depth (internal use)
+        max_depth: Maximum recursion depth to prevent infinite loops (default: 10)
+        current_path: Current folder path for display purposes
+    
+    Returns:
+        List of dicts with 'id', 'name', 'is_folder', 'parent_folder_id', and 'folder_path'
+    """
+    if depth > max_depth:
+        return []
+    
+    service = get_drive_service()
+    all_files = []
+    
+    # Get folders in current level
+    folder_query = f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    folder_results = service.files().list(q=folder_query, fields="files(id, name)").execute()
+    folders = folder_results.get('files', [])
+    
+    # Get spreadsheets in current level
+    spreadsheet_query = f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
+    spreadsheet_results = service.files().list(q=spreadsheet_query, fields="files(id, name, parents)").execute()
+    spreadsheets = spreadsheet_results.get('files', [])
+    
+    # Process spreadsheets
+    for file in spreadsheets:
+        file['is_folder'] = False
+        file['parent_folder_id'] = folder_id
+        file['folder_path'] = current_path
+        all_files.append(file)
+    
+    # Process subfolders recursively
+    for folder in folders:
+        folder_info = {
+            'id': folder['id'],
+            'name': folder['name'],
+            'is_folder': True,
+            'parent_folder_id': folder_id,
+            'folder_path': current_path
+        }
+        all_files.append(folder_info)
+        
+        # Recursively get files from subfolder
+        new_path = f"{current_path}/{folder['name']}" if current_path else folder['name']
+        subfolder_files = get_all_spreadsheets_recursive(
+            folder['id'],
+            depth=depth + 1,
+            max_depth=max_depth,
+            current_path=new_path
+        )
+        all_files.extend(subfolder_files)
+    
+    return all_files
