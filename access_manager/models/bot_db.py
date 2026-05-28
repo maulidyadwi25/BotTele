@@ -3,7 +3,8 @@ Standalone database connection for bot.py
 Uses SQLAlchemy directly without Flask-SQLAlchemy
 """
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, ForeignKey
+import json
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime
 
@@ -29,8 +30,8 @@ class AdminUser(Base):
 class TelegramUser(Base):
     __tablename__ = 'telegram_users'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    telegram_id = Column(String(50), unique=True, nullable=False)
-    username = Column(String(100), nullable=True)
+    telegram_id = Column(String(50), nullable=True)  # Can be null if username is provided
+    username = Column(String(100), unique=True, nullable=True)  # Unique to identify by username
     display_name = Column(String(100), nullable=True)
     status = Column(String(20), default='active')
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -54,6 +55,30 @@ class UserGlobalAccess(Base):
     telegram_user_id = Column(Integer, ForeignKey('telegram_users.id'), primary_key=True)
     has_global_access = Column(Boolean, default=False)
     access_level = Column(String(20), default='restricted')
+
+
+class SpreadsheetIndex(Base):
+    """Stores spreadsheet file/sheet metadata to avoid repeated API calls"""
+    __tablename__ = 'spreadsheet_index'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    file_id = Column(String(100), unique=True, nullable=False, index=True)
+    file_name = Column(String(255), nullable=False)
+    folder_id = Column(String(100), nullable=True, index=True)
+    folder_path = Column(String(500), nullable=True)
+    sheet_names = Column(Text, nullable=True)  # JSON array of sheet names
+    last_modified = Column(String(50), nullable=True)  # Drive modifiedTime
+    last_indexed = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+    
+    def get_sheet_list(self):
+        """Return sheet names as a Python list"""
+        if self.sheet_names:
+            return json.loads(self.sheet_names)
+        return []
+    
+    def set_sheet_list(self, sheet_list):
+        """Store sheet names as JSON"""
+        self.sheet_names = json.dumps(sheet_list)
 
 
 def get_session():

@@ -7,6 +7,30 @@ from models.user import TelegramUser, FilePermission, UserGlobalAccess
 class PermissionService:
     """Service for managing Telegram user permissions."""
 
+    def _get_user_by_id_or_username(self, identifier):
+        """Get user by telegram_id or username.
+        
+        Args:
+            identifier: Can be telegram_id (numeric string) or username (with or without @)
+        
+        Returns:
+            TelegramUser or None
+        """
+        if not identifier:
+            return None
+        
+        # Clean up identifier
+        identifier = identifier.strip().lstrip('@')
+        
+        # Check if it looks like a numeric ID
+        if identifier.isdigit():
+            user = TelegramUser.query.filter_by(telegram_id=identifier).first()
+        else:
+            # It's a username - search by username
+            user = TelegramUser.query.filter_by(username=identifier).first()
+        
+        return user
+
     def get_all_users(self):
         """Get all Telegram users."""
         users = TelegramUser.query.all()
@@ -17,17 +41,40 @@ class PermissionService:
         user = TelegramUser.query.get(user_id)
         return user.to_dict() if user else None
 
-    def create_user(self, telegram_id, username=None, display_name=None):
-        """Create a new Telegram user."""
-        # Check if user already exists
-        existing = TelegramUser.query.filter_by(telegram_id=str(telegram_id)).first()
-        if existing:
-            return {'success': False, 'error': 'User with this Telegram ID already exists'}
+    def get_user_by_identifier(self, identifier):
+        """Get a user by telegram_id or username.
+        
+        Args:
+            identifier: Telegram ID (string) or username (with or without @)
+        
+        Returns:
+            User dict or None
+        """
+        user = self._get_user_by_id_or_username(identifier)
+        return user.to_dict() if user else None
+
+    def create_user(self, telegram_id=None, username=None, display_name=None):
+        """Create a new Telegram user.
+        
+        Either telegram_id OR username must be provided.
+        """
+        # Check if user already exists by telegram_id
+        if telegram_id:
+            existing = TelegramUser.query.filter_by(telegram_id=str(telegram_id)).first()
+            if existing:
+                return {'success': False, 'error': 'User with this Telegram ID already exists'}
+        
+        # Check if user already exists by username
+        if username:
+            username_clean = username.strip().lstrip('@')
+            existing = TelegramUser.query.filter_by(username=username_clean).first()
+            if existing:
+                return {'success': False, 'error': 'User with this username already exists'}
 
         try:
             user = TelegramUser(
-                telegram_id=str(telegram_id),
-                username=username,
+                telegram_id=str(telegram_id) if telegram_id else None,
+                username=username.strip().lstrip('@') if username else None,
                 display_name=display_name or username
             )
             db.session.add(user)
@@ -123,23 +170,32 @@ class PermissionService:
             db.session.rollback()
             return {'success': False, 'error': str(e)}
 
-    def has_global_access(self, telegram_id):
-        """Check if a user has global access."""
-        user = TelegramUser.query.filter_by(telegram_id=str(telegram_id)).first()
+    def has_global_access(self, user_identifier):
+        """Check if a user has global access.
+        
+        Args:
+            user_identifier: Telegram ID (string) or username (with or without @)
+        """
+        user = self._get_user_by_id_or_username(user_identifier)
         if not user or user.status != 'active':
             return False
 
         global_access = UserGlobalAccess.query.filter_by(telegram_user_id=user.id).first()
         return global_access.has_global_access if global_access else False
 
-    def has_file_permission(self, telegram_id, file_id):
-        """Check if a user has permission for a specific file."""
-        user = TelegramUser.query.filter_by(telegram_id=str(telegram_id)).first()
+    def has_file_permission(self, user_identifier, file_id):
+        """Check if a user has permission for a specific file.
+        
+        Args:
+            user_identifier: Telegram ID (string) or username (with or without @)
+            file_id: File/folder ID to check permission for
+        """
+        user = self._get_user_by_id_or_username(user_identifier)
         if not user or user.status != 'active':
             return False
 
         # Check global access first
-        if self.has_global_access(telegram_id):
+        if self.has_global_access(user_identifier):
             return True
 
         # Check file-specific permission

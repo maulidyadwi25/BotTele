@@ -30,18 +30,24 @@ def api_list():
 @users_bp.route('/api', methods=['POST'])
 @login_required
 def api_create():
-    """API: Create new Telegram user."""
-    data = request.get_json()
+    """API: Create new Telegram user.
     
-    telegram_id = data.get('telegram_id', '').strip()
-    username = data.get('username', '').strip()
-    display_name = data.get('display_name', '').strip()
+    Either telegram_id OR username must be provided (at least one required).
+    """
+    data = request.get_json() or {}
+    
+    telegram_id = (data.get('telegram_id') or '').strip()
+    username = (data.get('username') or '').strip()
+    display_name = (data.get('display_name') or '').strip()
 
-    if not telegram_id:
-        return jsonify({'success': False, 'error': 'Telegram ID is required'}), 400
+    # Validate: at least one of telegram_id or username must be provided
+    if not telegram_id and not username:
+        return jsonify({'success': False, 'error': 'Telegram ID or Username is required (at least one)'}), 400
 
     ps = PermissionService()
-    result = ps.create_user(telegram_id, username, display_name)
+    result = ps.create_user(telegram_id if telegram_id else None,
+                           username if username else None,
+                           display_name)
 
     if result['success']:
         return jsonify(result), 201
@@ -100,3 +106,5 @@ def api_toggle_status(user_id):
         return jsonify(result)
     else:
         return jsonify(result), 400
+
+

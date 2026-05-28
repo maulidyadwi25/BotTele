@@ -27,8 +27,8 @@ class TelegramUser(db.Model):
     __tablename__ = 'telegram_users'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    telegram_id = db.Column(db.String(50), unique=True, nullable=False)
-    username = db.Column(db.String(100), nullable=True)
+    telegram_id = db.Column(db.String(50), nullable=True)  # Can be null if username is provided
+    username = db.Column(db.String(100), unique=True, nullable=True)  # Unique to identify by username
     display_name = db.Column(db.String(100), nullable=True)
     status = db.Column(db.String(20), default='active')  # active, suspended
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

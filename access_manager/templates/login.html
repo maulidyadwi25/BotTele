@@ -13,8 +13,8 @@
         <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-xl md:p-[48px] shadow-lg">
             <!-- Branding -->
             <div class="flex flex-col items-center mb-xl">
-                <div class="w-16 h-16 bg-primary-container rounded-xl flex items-center justify-center mb-lg">
-                    <span class="material-symbols-outlined text-3xl text-on-primary-container">shield</span>
+                <div class="w-48 h-auto mb-lg brand-shadow">
+                    <img alt="DEFEND ID Logo" class="w-full h-auto object-contain" src="{{ url_for('static', filename='LenLogo.png') }}">
                 </div>
                 <div class="text-center">
                     <h1 class="text-headline-md font-bold text-primary mb-base">Security Console</h1>
@@ -49,7 +49,7 @@
                         <div class="absolute inset-y-0 left-0 pl-md flex items-center pointer-events-none text-outline">
                             <span class="material-symbols-outlined">person</span>
                         </div>
-                        <input class="block w-full pl-xl pr-md py-md bg-surface border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all placeholder:text-outline-variant" 
+                        <input class="block w-full pl-[50px] pr-md py-md bg-surface border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all placeholder:text-outline-variant" 
                                id="username" name="username" placeholder="Enter system identity" type="text" required/>
                     </div>
                 </div>
@@ -63,7 +63,7 @@
                         <div class="absolute inset-y-0 left-0 pl-md flex items-center pointer-events-none text-outline">
                             <span class="material-symbols-outlined">lock</span>
                         </div>
-                        <input class="block w-full pl-xl pr-md py-md bg-surface border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all placeholder:text-outline-variant" 
+                        <input class="block w-full pl-[50px] pr-md py-md bg-surface border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary focus:border-primary transition-all placeholder:text-outline-variant" 
                                id="password" name="password" placeholder="••••••••••••" type="password" required/>
                     </div>
                     <div class="flex justify-end pt-base">

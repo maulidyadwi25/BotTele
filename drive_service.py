@@ -15,6 +15,22 @@ def get_drive_service():
     service = build('drive', 'v3', credentials=creds)
     return service
 
+def get_file_modification_time(file_id):
+    """
+    Get the modifiedTime of a file from Google Drive API.
+    Returns the modifiedTime string or None if error.
+    """
+    try:
+        service = get_drive_service()
+        file_meta = service.files().get(
+            fileId=file_id,
+            fields='modifiedTime'
+        ).execute()
+        return file_meta.get('modifiedTime')
+    except Exception as e:
+        print(f"[ERROR] get_file_modification_time: {e}")
+        return None
+
 def list_spreadsheet_files(folder_id):
     """
     Mengambil daftar folder dan file spreadsheet di folder root.

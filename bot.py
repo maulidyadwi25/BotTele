@@ -69,7 +69,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if user is registered in access manager
     session = get_session()
     try:
+        # Try to find by telegram_id first, then fallback to username
         existing_user = session.query(TelegramUser).filter_by(telegram_id=telegram_id).first()
+        if not existing_user and username:
+            existing_user = session.query(TelegramUser).filter_by(username=username).first()
         
         if not existing_user:
             # User NOT registered - show message and return
@@ -81,8 +84,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         print(f"[DEBUG] User {username} found in DB - status: {existing_user.status}")
         
-        # Check if user has global access
-        has_global = permission_service.has_global_access(telegram_id)
+        # Check if user has global access (pass username for fallback lookup)
+        has_global = permission_service.has_global_access(telegram_id, username)
         print(f"[DEBUG] User {username} has_global_access: {has_global}")
         
     finally:
@@ -104,8 +107,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = file['id']
         file_name = file['name']
         
-        # Check permission for this specific file/folder
-        has_permission = permission_service.has_file_permission(telegram_id, file_id)
+        # Check permission for this specific file/folder (pass username for fallback)
+        has_permission = permission_service.has_file_permission(telegram_id, file_id, username)
         print(f"[DEBUG] User {username} has_permission for '{file_name}': {has_permission}")
         
         # Skip files user doesn't have permission to
@@ -210,8 +213,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             file_id = file['id']
             file_name = file['name']
             
-            # Check permission for this file/folder
-            has_permission = permission_service.has_file_permission(telegram_id, file_id)
+            # Check permission for this file/folder (pass username for fallback)
+            has_permission = permission_service.has_file_permission(telegram_id, file_id, username)
             print(f"[DEBUG] User {username} has_permission for '{file_name}': {has_permission}")
             
             # Skip files user doesn't have permission to
@@ -270,8 +273,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         
         print(f"[DEBUG] User {username} selecting file: {file_id}")
         
-        # Check permission before showing file
-        if not permission_service.has_file_permission(telegram_id, file_id):
+        # Check permission before showing file (pass username for fallback)
+        if not permission_service.has_file_permission(telegram_id, file_id, username):
             print(f"[DEBUG] User {username} DENIED access to file: {file_id}")
             await query.answer("Access denied. You don't have permission.", show_alert=True)
             return
@@ -321,8 +324,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         
         print(f"[DEBUG] User {username} accessing sheet: {sheet_name} in file: {file_id}")
         
-        # Check permission before showing actions
-        if not permission_service.has_file_permission(telegram_id, file_id):
+        # Check permission before showing actions (pass username for fallback)
+        if not permission_service.has_file_permission(telegram_id, file_id, username):
             print(f"[DEBUG] User {username} DENIED access to file: {file_id}")
             await query.answer("Access denied. You don't have permission.", show_alert=True)
             return
@@ -359,7 +362,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         print(f"[DEBUG] User {username} action: {action_type} on sheet: {sheet_name} file: {file_id}")
         
         # Check permission before showing data
-        if not permission_service.has_file_permission(telegram_id, file_id):
+        # Check permission before showing data (pass username for fallback)
+        if not permission_service.has_file_permission(telegram_id, file_id, username):
             print(f"[DEBUG] User {username} DENIED access to file: {file_id}")
             await query.answer("Access denied. You don't have permission.", show_alert=True)
             return
@@ -518,8 +522,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             file_id = file['id']
             file_name = file['name']
             
-            # Check permission for this file/folder
-            has_permission = permission_service.has_file_permission(telegram_id, file_id)
+            # Check permission for this file/folder (pass username for fallback)
+            has_permission = permission_service.has_file_permission(telegram_id, file_id, username)
             if not has_permission:
                 continue
             
@@ -561,10 +565,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if user is registered in access manager
     session = get_session()
     try:
+        # Try to find by telegram_id first, then fallback to username
         existing_user = session.query(TelegramUser).filter_by(telegram_id=telegram_id).first()
+        if not existing_user and username:
+            existing_user = session.query(TelegramUser).filter_by(username=username).first()
         
         if not existing_user:
-            print(f"[DEBUG] Unregistered user {username} tried to send message")
+            print(f"[DEBUG] Unregistered user {username} ({telegram_id}) tried to send message")
             await update.message.reply_text(
                 "Maaf, Anda belum terdaftar dalam sistem. Silakan hubungi administrator untuk mendapatkan akses."
             )
@@ -578,11 +585,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.chat.send_action(action="typing")
     
-    sheet_data = get_sheet_data()
-    if sheet_data is None:
-        await update.message.reply_text("❌ Gagal mengambil data dari Google Sheets.")
-        return
-    
     # Cek apakah ada file/sheet yang sudah dipilih
     selected_file_id = context.user_data.get('selected_file_id')
     selected_sheet_name = context.user_data.get('selected_sheet_name')
@@ -591,8 +593,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"DEBUG - selected_file_id: {selected_file_id}")
     print(f"DEBUG - selected_sheet_name: {selected_sheet_name}")
     
+    # Prepare lowercase version for pattern matching
+    user_question_lower = user_question.lower()
+    
+    # Check for search intent - these messages need spreadsheet data
+    search_keywords = ['buka', 'cari', 'search', 'find', 'buka file', 'cari file', 'show', 'tampilkan', 'lihat', 'cek', 'apa', 'siapa', 'dimana', 'berapa', 'jumlah', 'total', 'list']
+    has_search_intent = any(k in user_question_lower for k in search_keywords)
+    
+    print(f"[DEBUG] has_search_intent: {has_search_intent}, message: '{user_question}'")
+    
+    # Initialize variables
+    sheet_str = None
+    file_context = "Tidak ada file yang dipilih"
+    
     if selected_file_id and selected_sheet_name:
-        # Ambil data hanya dari sheet yang dipilih
+        # User has selected a specific file/sheet - load that data
+        print(f"[DEBUG] Loading data from selected file/sheet: {selected_file_name}/{selected_sheet_name}")
         raw_data = gs.get_sheet_data(selected_file_id, selected_sheet_name)
         file_context = f"File '{selected_file_name}', Sheet '{selected_sheet_name}'"
         
@@ -604,92 +620,108 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sheet_str = "\n".join(lines)
         else:
             sheet_str = "Data tidak ditemukan"
-    else:
-        # No specific file/sheet selected - search ALL spreadsheets recursively
-        # Filter by user permissions
-        all_files = gs.get_all_spreadsheet_files_recursive()
+    elif has_search_intent:
+        # User asking about data - use index service for efficient search
+        print(f"[DEBUG] Search intent detected, using index service")
         
-        # Filter files based on user permissions - only include spreadsheets user can access
-        accessible_files = []
-        for file in all_files:
-            if file.get('is_folder', False):
-                continue  # Skip folders
-            file_id = file['id']
-            if permission_service.has_file_permission(telegram_id, file_id):
-                accessible_files.append(file)
+        # Import here to avoid circular import
+        from access_manager.services.spreadsheet_index_service import get_index_service
         
-        print(f"[DEBUG] User {username} - total accessible files: {len(accessible_files)}")
-        
-        if not accessible_files:
-            await update.message.reply_text(
-                "Anda tidak memiliki akses ke file manapun. Gunakan /start untuk memilih file."
-            )
-            return
-        
-        # Check if user is searching for a specific file
-        search_keywords = ['buka', 'cari', 'search', 'find', 'buka file', 'cari file', 'show', 'tampilkan']
-        user_question_lower = user_question.lower()
-        
-        # Extract search query - find what user is looking for
+        # Extract search query
         search_query = None
         for keyword in search_keywords:
             if keyword in user_question_lower:
-                # Extract the search term after the keyword
                 idx = user_question_lower.find(keyword)
                 query_after = user_question_lower[idx + len(keyword):].strip()
-                # Clean up common prefixes
                 query_after = query_after.replace('file', '').replace(':', '').strip()
                 if query_after:
                     search_query = query_after
                     break
         
-        matching_files = []
-        if search_query:
-            # Search for files matching the query
-            print(f"[DEBUG] Searching for files matching: '{search_query}'")
-            for file in accessible_files:
-                file_name_lower = file['name'].lower()
-                if search_query in file_name_lower:
-                    matching_files.append(file)
-            print(f"[DEBUG] Found {len(matching_files)} matching files")
+        # Use index service to find matching files (lazy loading)
+        index_service = get_index_service()
         
-        if matching_files:
-            # Only process matching files
-            files_to_process = matching_files
+        if search_query:
+            print(f"[DEBUG] Searching index for: '{search_query}'")
+            # Search by file name OR sheet name
+            matching_indices = index_service.search_files(search_query)
+            
+            # Filter by user permissions
+            accessible_indices = []
+            for idx in matching_indices:
+                if permission_service.has_file_permission(telegram_id, idx.file_id, username):
+                    accessible_indices.append(idx)
+            
+            print(f"[DEBUG] Found {len(accessible_indices)} accessible files matching '{search_query}'")
+            
+            if not accessible_indices:
+                await update.message.reply_text(
+                    f"Tidak ada file yang cocok dengan '{search_query}'. Gunakan /start untuk melihat file yang tersedia."
+                )
+                index_service.close()
+                return
+            
+            # Index and load only matching files (lazy)
+            files_to_process = []
+            for idx in accessible_indices:
+                # Re-index if needed (will use cache if not modified)
+                indexed = index_service.get_or_index_file(idx.file_id, idx.file_name)
+                if indexed:
+                    files_to_process.append(indexed)
+            
+            file_context = f"Ditemukan {len(files_to_process)} file yang cocok dengan '{search_query}'"
         else:
-            # No specific search, ask user to choose or load all
-            files_to_process = accessible_files
+            # No specific query - show accessible files from index
+            all_indices = index_service.get_all_indexed_files()
+            
+            # Filter by user permissions
+            accessible_indices = []
+            for idx in all_indices:
+                if permission_service.has_file_permission(telegram_id, idx.file_id, username):
+                    accessible_indices.append(idx)
+            
+            print(f"[DEBUG] User {username} - total accessible indexed files: {len(accessible_indices)}")
+            
+            if not accessible_indices:
+                await update.message.reply_text(
+                    "Anda tidak memiliki akses ke file manapun. Gunakan /start untuk memilih file."
+                )
+                index_service.close()
+                return
+            
+            # Index files that user has access to (lazy)
+            files_to_process = []
+            for idx in accessible_indices:
+                indexed = index_service.get_or_index_file(idx.file_id, idx.file_name)
+                if indexed:
+                    files_to_process.append(indexed)
+            
+            file_context = f"Total {len(files_to_process)} file yang dapat diakses"
+        
+        index_service.close()
         
         print(f"[DEBUG] Processing {len(files_to_process)} files")
         
-        # Build data from accessible files and their sheets
+        # Build data from files
         all_data_parts = []
-        for file in files_to_process:
-            file_id = file['id']
-            file_name = file['name']
-            folder_path = file.get('folder_path', '')
+        for idx in files_to_process:
+            path_info = f" (Path: {idx.folder_path})" if idx.folder_path else ""
+            all_data_parts.append(f"\n📁 File: {idx.file_name}{path_info}")
             
-            path_info = f" (Path: {folder_path})" if folder_path else ""
-            all_data_parts.append(f"\n📁 File: {file_name}{path_info}")
-            
-            # Get all sheets from this file (uses cache)
-            sheets = gs.get_sheets_from_file(file_id)
+            sheets = idx.get_sheet_list()
             
             if not sheets:
                 all_data_parts.append("   - Gagal mengambil sheet")
                 continue
             
             for sheet_name in sheets:
-                # Get sheet data (uses cache)
-                raw_data = gs.get_sheet_data(file_id, sheet_name)
+                raw_data = gs.get_sheet_data(idx.file_id, sheet_name)
                 
                 if raw_data:
                     all_data_parts.append(f"   📄 Sheet: {sheet_name}")
-                    # Limit rows to avoid too much data
                     rows_to_show = min(10, len(raw_data))
                     for i in range(rows_to_show):
                         if i == 0:
-                            # Header row
                             row_data = ' | '.join([str(cell) for cell in raw_data[i]])
                             all_data_parts.append(f"      Header: {row_data}")
                         else:
@@ -701,11 +733,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     all_data_parts.append(f"   - Sheet '{sheet_name}' kosong atau gagal dibaca")
         
         sheet_str = "\n".join(all_data_parts) if all_data_parts else "Data tidak ditemukan"
-        
-        if matching_files:
-            file_context = f"Ditemukan {len(matching_files)} file yang cocok dengan '{search_query}'"
-        else:
-            file_context = f"Seluruh folder (total {len(accessible_files)} file yang dapat diakses)"
+    else:
+        # No specific file/sheet selected and no search intent
+        # Just respond without loading spreadsheet data
+        print(f"[DEBUG] No search intent - responding without spreadsheet data")
+        sheet_str = "Tidak ada data yang dimuat. Gunakan /start untuk memilih file atau gunakan kata kunci seperti 'buka', 'cari', 'cek' untuk mencari data."
     
     # Gunakan instruksi format HTML
     system_prompt = f"""
