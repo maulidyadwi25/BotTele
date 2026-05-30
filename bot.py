@@ -340,7 +340,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton("Hitung Rata-rata", callback_data=encode_callback_data(f"action|avg|{file_id}|{sheet_name}"))],
             [InlineKeyboardButton("Hitung Total", callback_data=encode_callback_data(f"action|total|{file_id}|{sheet_name}"))],
             [InlineKeyboardButton("Statistik", callback_data=encode_callback_data(f"action|stats|{file_id}|{sheet_name}"))],
-            [InlineKeyboardButton("<< Kembali ke Daftar Sheet", callback_data=encode_callback_data(f"file|{file_id}"))]
+            [InlineKeyboardButton("<< Kembali ke Daftar Sheet", callback_data=encode_callback_data(f"back_to_sheet_list|{file_id}"))]
         ]
 
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -491,8 +491,11 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 if not numeric_columns:
                     output += "Tidak ada kolom numerik yang ditemukan.\n"
             
-            # Tambahkan tombol kembali
-            keyboard = [[InlineKeyboardButton("← Kembali ke Pilihan Aksi", callback_data=encode_callback_data(f"sheet|{file_id}|{sheet_name}"))]]
+            # Tambahkan tombol kembali ke sheet list dan file list
+            keyboard = [
+                [InlineKeyboardButton("<< Kembali ke Daftar Sheet", callback_data=encode_callback_data(f"back_to_sheet_list|{file_id}"))],
+                [InlineKeyboardButton("← Kembali ke Daftar File", callback_data=encode_callback_data("back_to_files"))]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await query.edit_message_text(
@@ -504,6 +507,57 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception as e:
             print(f"Error getting sheet data: {e}")
             await query.edit_message_text(f"❌ Gagal mengambil data dari sheet: {str(e)}")
+    
+    elif data.startswith("back_to_sheet_list|"):
+        # Kembali ke daftar sheet dari file tertentu
+        file_id = data.replace("back_to_sheet_list|", "")
+        
+        print(f"[DEBUG] User {username} going back to sheet list for file: {file_id}")
+        
+        # Check permission
+        if not permission_service.has_file_permission(telegram_id, file_id, username):
+            await query.answer("Access denied.", show_alert=True)
+            return
+        
+        # Get file name
+        file_name = context.user_data.get('selected_file_name', 'Unknown')
+        
+        # Get sheets using index service (lazy)
+        from access_manager.services.spreadsheet_index_service import get_index_service
+        index_service = get_index_service()
+        indexed = index_service.get_or_index_file(file_id, file_name)
+        
+        if indexed:
+            sheets = indexed.get_sheet_list()
+            file_name = indexed.file_name
+        else:
+            sheets = gs.get_sheets_from_file(file_id)
+        index_service.close()
+        
+        if not sheets:
+            await query.edit_message_text("❌ Gagal mengambil daftar sheet dari file tersebut.")
+            return
+        
+        # Clear selected sheet when going back to list
+        context.user_data['selected_sheet_name'] = None
+        
+        keyboard = []
+        for sheet_name in sheets:
+            callback_data = encode_callback_data(f"sheet|{file_id}|{sheet_name}")
+            keyboard.append([InlineKeyboardButton(sheet_name, callback_data=callback_data)])
+        
+        # Tambahkan tombol kembali ke daftar file
+        keyboard.append([InlineKeyboardButton("← Kembali ke Daftar File", callback_data=encode_callback_data("back_to_files"))])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"📄 **Daftar Sheet**\n\n"
+            f"File: {file_name}\n"
+            f"Silakan pilih sheet yang ingin Anda lihat:",
+            reply_markup=reply_markup,
+            parse_mode=TELEGRAM_PARSE_MODE
+        )
     
     elif data == "back_to_files" or data == "back_to_root":
         # Kembali ke daftar file utama
@@ -620,6 +674,67 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sheet_str = "\n".join(lines)
         else:
             sheet_str = "Data tidak ditemukan"
+    elif selected_file_id and not selected_sheet_name:
+        # File is selected but no sheet - auto-select sheets based on query
+        print(f"[DEBUG] File '{selected_file_name}' selected but no sheet - auto-selecting based on query")
+        
+        # Use index service to get sheet names
+        from access_manager.services.spreadsheet_index_service import get_index_service
+        index_service = get_index_service()
+        indexed = index_service.get_or_index_file(selected_file_id, selected_file_name)
+        
+        if indexed:
+            all_sheets = indexed.get_sheet_list()
+        else:
+            all_sheets = gs.get_sheets_from_file(selected_file_id)
+        index_service.close()
+        
+        # Find matching sheets based on query
+        matching_sheets = []
+        query_lower = user_question_lower
+        
+        for sheet_name in all_sheets:
+            sheet_lower = sheet_name.lower()
+            # Match if query keywords appear in sheet name
+            if any(k in sheet_lower for k in query_lower.split() if len(k) > 2):
+                matching_sheets.append(sheet_name)
+        
+        # If no match from keywords, try word-by-word matching
+        if not matching_sheets:
+            query_words = [w for w in query_lower.split() if len(w) > 2]
+            for sheet_name in all_sheets:
+                sheet_lower = sheet_name.lower()
+                if any(word in sheet_lower for word in query_words):
+                    matching_sheets.append(sheet_name)
+        
+        # Limit to reasonable number of sheets (max 5)
+        matching_sheets = matching_sheets[:5]
+        
+        print(f"[DEBUG] Auto-selected {len(matching_sheets)} sheets: {matching_sheets}")
+        
+        # Load data from all matching sheets
+        all_data_parts = []
+        for sheet_name in matching_sheets:
+            raw_data = gs.get_sheet_data(selected_file_id, sheet_name)
+            if raw_data:
+                all_data_parts.append(f"\n📄 Sheet: {sheet_name}")
+                rows_to_show = min(10, len(raw_data))
+                for i in range(rows_to_show):
+                    if i == 0:
+                        row_data = ' | '.join([str(cell) for cell in raw_data[i]])
+                        all_data_parts.append(f"   Header: {row_data}")
+                    else:
+                        row_data = ' | '.join([str(cell) for cell in raw_data[i]])
+                        all_data_parts.append(f"   {row_data}")
+                if len(raw_data) > rows_to_show:
+                    all_data_parts.append(f"   ... dan {len(raw_data) - rows_to_show} baris lainnya")
+        
+        if matching_sheets:
+            file_context = f"File '{selected_file_name}' (auto-selected {len(matching_sheets)} sheet)"
+            sheet_str = "\n".join(all_data_parts) if all_data_parts else "Data tidak ditemukan"
+        else:
+            file_context = f"File '{selected_file_name}' - tidak ada sheet yang cocok"
+            sheet_str = f"Sheet tidak ditemukan. Sheet yang tersedia: {', '.join(all_sheets[:10])}"
     elif has_search_intent:
         # User asking about data - use index service for efficient search
         print(f"[DEBUG] Search intent detected, using index service")
