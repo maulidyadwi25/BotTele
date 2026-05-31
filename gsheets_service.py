@@ -4,7 +4,10 @@ import time
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.errors import HttpError
-from drive_service import list_spreadsheet_files, get_drive_service, get_all_spreadsheets_recursive
+from drive_service import list_spreadsheet_files, get_drive_service, get_all_spreadsheets_recursive, resolve_file_id
+
+# Constants for shortcut handling
+SHORTCUT_MIMETYPE = 'application/vnd.google-apps.shortcut'
 
 # Konfigurasi
 FOLDER_ID = os.getenv('FOLDER_ID', 'YOUR_FOLDER_ID')  # Ganti dengan ID folder Google Drive Anda
@@ -150,58 +153,62 @@ def get_sheets_from_file(file_id):
     """
     Mengambil daftar sheet (worksheet) dari file spreadsheet tertentu.
     Menggunakan cache untuk mengurangi API calls.
+    Mendukung pintasan (shortcuts) ke spreadsheet.
     """
-    # Check cache first
+    # Resolve shortcut if file_id is a shortcut
+    resolved_file_id = resolve_file_id(file_id)
+    
+    # Check cache first (use resolved file_id for caching)
     current_time = time.time()
-    if file_id in SHEET_METADATA_CACHE:
-        cached = SHEET_METADATA_CACHE[file_id]
+    if resolved_file_id in SHEET_METADATA_CACHE:
+        cached = SHEET_METADATA_CACHE[resolved_file_id]
         if current_time - cached['timestamp'] < SHEET_METADATA_TTL:
-            print(f"[CACHE HIT] get_sheets_from_file - {file_id[:20]}...")
+            print(f"[CACHE HIT] get_sheets_from_file - {resolved_file_id[:20]}...")
             return cached['sheets']
         else:
-            print(f"[CACHE EXPIRED] get_sheets_from_file - {file_id[:20]}... (age: {current_time - cached['timestamp']:.0f}s)")
+            print(f"[CACHE EXPIRED] get_sheets_from_file - {resolved_file_id[:20]}... (age: {current_time - cached['timestamp']:.0f}s)")
     
     # Apply rate limiting
-    _rate_limit(file_id)
-    _increment_request(file_id, "get_sheets_from_file")
+    _rate_limit(resolved_file_id)
+    _increment_request(resolved_file_id, "get_sheets_from_file")
     
     client = get_sheets_client()
     
     for retry in range(MAX_RETRIES):
         try:
-            spreadsheet = client.open_by_key(file_id)
+            spreadsheet = client.open_by_key(resolved_file_id)
             
             # Update file index with current name (captures name changes)
             spreadsheet_name = spreadsheet.title if hasattr(spreadsheet, 'title') else None
             if spreadsheet_name:
-                _update_file_index(file_id, spreadsheet_name)
+                _update_file_index(resolved_file_id, spreadsheet_name)
             
             worksheets = spreadsheet.worksheets()
             sheets = [worksheet.title for worksheet in worksheets]
             
-            # Store in cache
-            SHEET_METADATA_CACHE[file_id] = {
+            # Store in cache (cache by resolved file_id)
+            SHEET_METADATA_CACHE[resolved_file_id] = {
                 'sheets': sheets,
                 'timestamp': time.time()
             }
-            print(f"[CACHE MISS] get_sheets_from_file cached {len(sheets)} sheets - {file_id[:20]}...")
+            print(f"[CACHE MISS] get_sheets_from_file cached {len(sheets)} sheets - {resolved_file_id[:20]}...")
             
             return sheets
         except HttpError as e:
             if e.resp.status == 429:
-                _handle_rate_limit_error(file_id, retry)
+                _handle_rate_limit_error(resolved_file_id, retry)
             else:
-                print(f"Error getting sheets from file {file_id}: {e}")
+                print(f"Error getting sheets from file {resolved_file_id}: {e}")
                 return []
         except Exception as e:
             error_str = str(e)
             if '429' in error_str:
-                _handle_rate_limit_error(file_id, retry)
+                _handle_rate_limit_error(resolved_file_id, retry)
             else:
-                print(f"Error getting sheets from file {file_id}: {e}")
+                print(f"Error getting sheets from file {resolved_file_id}: {e}")
                 return []
     
-    print(f"Error: Max retries exceeded for getting sheets from file {file_id}")
+    print(f"Error: Max retries exceeded for getting sheets from file {resolved_file_id}")
     return []
 
 def get_sheet_data(file_id, sheet_name):
@@ -209,35 +216,39 @@ def get_sheet_data(file_id, sheet_name):
     Mengambil data dari sheet tertentu.
     Menggunakan cache untuk mengurangi API calls.
     Updates file index when accessing the file.
+    Mendukung pintasan (shortcuts) ke spreadsheet.
     """
-    cache_key = (file_id, sheet_name)
+    # Resolve shortcut if file_id is a shortcut
+    resolved_file_id = resolve_file_id(file_id)
+    
+    cache_key = (resolved_file_id, sheet_name)
     
     # Check cache first
     current_time = time.time()
     if cache_key in SHEET_DATA_CACHE:
         cached = SHEET_DATA_CACHE[cache_key]
         if current_time - cached['timestamp'] < SHEET_DATA_TTL:
-            print(f"[CACHE HIT] get_sheet_data - {file_id[:20]}... / {sheet_name}")
+            print(f"[CACHE HIT] get_sheet_data - {resolved_file_id[:20]}... / {sheet_name}")
             # Still update file index on cache hit
-            _update_file_index(file_id, FILE_INDEX_CACHE.get(file_id, {}).get('name', 'Unknown'))
+            _update_file_index(resolved_file_id, FILE_INDEX_CACHE.get(resolved_file_id, {}).get('name', 'Unknown'))
             return cached['data']
         else:
-            print(f"[CACHE EXPIRED] get_sheet_data - {file_id[:20]}... / {sheet_name} (age: {current_time - cached['timestamp']:.0f}s)")
+            print(f"[CACHE EXPIRED] get_sheet_data - {resolved_file_id[:20]}... / {sheet_name} (age: {current_time - cached['timestamp']:.0f}s)")
     
     # Apply rate limiting
-    _rate_limit(file_id)
-    _increment_request(file_id, "get_sheet_data")
+    _rate_limit(resolved_file_id)
+    _increment_request(resolved_file_id, "get_sheet_data")
     
     client = get_sheets_client()
     
     for retry in range(MAX_RETRIES):
         try:
-            spreadsheet = client.open_by_key(file_id)
+            spreadsheet = client.open_by_key(resolved_file_id)
             
             # Update file index with current name (captures name changes)
             spreadsheet_name = spreadsheet.title if hasattr(spreadsheet, 'title') else None
             if spreadsheet_name:
-                _update_file_index(file_id, spreadsheet_name)
+                _update_file_index(resolved_file_id, spreadsheet_name)
             
             worksheet = spreadsheet.worksheet(sheet_name)
             data = worksheet.get_all_values()
@@ -251,36 +262,44 @@ def get_sheet_data(file_id, sheet_name):
             return data
         except HttpError as e:
             if e.resp.status == 429:
-                _handle_rate_limit_error(file_id, retry)
+                _handle_rate_limit_error(resolved_file_id, retry)
             else:
                 print(f"Error getting sheet data: {e}")
                 return None
         except Exception as e:
             error_str = str(e)
             if '429' in error_str:
-                _handle_rate_limit_error(file_id, retry)
+                _handle_rate_limit_error(resolved_file_id, retry)
             else:
                 print(f"Error getting sheet data: {e}")
                 return None
     
-    print(f"Error: Max retries exceeded for getting sheet data {file_id}/{sheet_name}")
+    print(f"Error: Max retries exceeded for getting sheet data {resolved_file_id}/{sheet_name}")
     return None
 
 def get_files_in_folder(folder_id):
     """
     Mengambil daftar file dan folder dalam folder tertentu.
+    Mendukung pintasan (shortcuts) ke spreadsheet.
     """
+    from drive_service import resolve_shortcut, SHORTCUT_MIMETYPE, SPREADSHEET_MIMETYPE, FOLDER_MIMETYPE
+    
     service = get_drive_service()
     
     # Dapatkan folder di dalam folder_id
-    folder_query = f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    folder_query = f"'{folder_id}' in parents and mimeType='{FOLDER_MIMETYPE}' and trashed=false"
     folder_results = service.files().list(q=folder_query, fields="files(id, name)").execute()
     folders = folder_results.get('files', [])
     
     # Dapatkan file spreadsheet di folder_id
-    spreadsheet_query = f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
+    spreadsheet_query = f"'{folder_id}' in parents and mimeType='{SPREADSHEET_MIMETYPE}' and trashed=false"
     spreadsheet_results = service.files().list(q=spreadsheet_query, fields="files(id, name)").execute()
     spreadsheet_files = spreadsheet_results.get('files', [])
+    
+    # Dapatkan pintasan (shortcuts) di folder_id
+    shortcut_query = f"'{folder_id}' in parents and mimeType='{SHORTCUT_MIMETYPE}' and trashed=false"
+    shortcut_results = service.files().list(q=shortcut_query, fields="files(id, name, shortcutDetails)").execute()
+    shortcut_files = shortcut_results.get('files', [])
     
     # Buat list untuk semua item (file dan folder)
     files = []
@@ -291,8 +310,22 @@ def get_files_in_folder(folder_id):
             'id': file['id'],
             'name': file['name'],
             'is_folder': False,
+            'is_shortcut': False,
             'parent_folder_id': folder_id
         })
+    
+    # Tambahkan pintasan spreadsheet
+    for shortcut in shortcut_files:
+        target_id, target_mime = resolve_shortcut(shortcut['id'])
+        if target_id and target_mime == SPREADSHEET_MIMETYPE:
+            files.append({
+                'id': shortcut['id'],
+                'name': shortcut['name'],
+                'is_folder': False,
+                'is_shortcut': True,
+                'target_id': target_id,
+                'parent_folder_id': folder_id
+            })
     
     # Tambahkan folder sebagai entitas terpisah untuk navigasi
     for folder in folders:
@@ -300,15 +333,16 @@ def get_files_in_folder(folder_id):
             'id': folder['id'],
             'name': folder['name'],
             'is_folder': True,
+            'is_shortcut': False,
             'parent_folder_id': folder_id
         })
     
     return files
-
 def get_all_data_from_folder():
     """
     Mengambil data dari semua spreadsheet dan semua sheet dalam sebuah folder.
     Mengembalikan data dalam format teks yang sudah terstruktur.
+    Mendukung pintasan (shortcuts) ke spreadsheet.
     """
     client = get_sheets_client()
     spreadsheet_files = list_spreadsheet_files(FOLDER_ID)
@@ -320,11 +354,17 @@ def get_all_data_from_folder():
     for file in spreadsheet_files:
         file_id = file['id']
         file_name = file['name']
+        is_shortcut = file.get('is_shortcut', False)
 
         try:
-            spreadsheet = client.open_by_key(file_id)
-            all_data += f"\n\n📁 *File:* {file_name}\n"
-            all_data += f"   🔗 (ID: {file_id})\n"
+            # Resolve shortcut to get actual file_id for accessing the spreadsheet
+            resolved_file_id = resolve_file_id(file_id)
+            
+            spreadsheet = client.open_by_key(resolved_file_id)
+            shortcut_info = " (Shortcut)" if is_shortcut else ""
+            all_data += f"\n\n📁 *File:* {file_name}{shortcut_info}\n"
+            all_data += f"   🔗 (ID: {resolved_file_id})\n"
+
 
             # Iterasi melalui semua sheet yang ada di file spreadsheet
             worksheets = spreadsheet.worksheets()

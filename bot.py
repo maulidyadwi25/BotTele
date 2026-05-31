@@ -347,7 +347,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
         await query.edit_message_text(
             f"**Sheet: {sheet_name}**\n\n"
-            f"Pilih aksi yang ingin Anda lakukan:",
+            f"Pilih aksi yang ingin Anda lakukan atau tulis perintah untuk sheet ini:",
             reply_markup=reply_markup,
             parse_mode=TELEGRAM_PARSE_MODE
         )

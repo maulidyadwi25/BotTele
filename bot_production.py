@@ -96,7 +96,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "Daftar File Spreadsheet dan Folder\n\n"
-        "Silakan pilih file atau folder yang ingin Anda lihat:",
+        "Silakan pilih file atau folder yang ingin Anda lihat atau langsung:",
         reply_markup=reply_markup,
         parse_mode=TELEGRAM_PARSE_MODE
     )
@@ -242,7 +242,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
         await query.edit_message_text(
             f"Sheet: {sheet_name}\n\n"
-            f"Pilih aksi yang ingin Anda lakukan:",
+            f"Pilih aksi yang ingin Anda lakukan atau tulis perintah untuk sheet ini:",
             reply_markup=reply_markup,
             parse_mode=TELEGRAM_PARSE_MODE
         )

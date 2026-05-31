@@ -9,11 +9,15 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, project_root)
 
 try:
-    from drive_service import list_spreadsheet_files, get_drive_service
+    from drive_service import list_spreadsheet_files, get_drive_service, resolve_shortcut, resolve_file_id
     DRIVE_SERVICE_AVAILABLE = True
 except ImportError:
     DRIVE_SERVICE_AVAILABLE = False
     print(f"Warning: Could not import drive_service. Project root: {project_root}")
+
+# MimeType constants for shortcut handling
+SHORTCUT_MIMETYPE = 'application/vnd.google-apps.shortcut'
+SPREADSHEET_MIMETYPE = 'application/vnd.google-apps.spreadsheet'
 
 
 class DriveIntegration:
@@ -82,17 +86,37 @@ class DriveIntegration:
             return 'Unknown File'
 
     def get_files_in_folder(self, folder_id):
-        """Get all files in a specific folder."""
+        """Get all files in a specific folder, including spreadsheet shortcuts."""
         if not DRIVE_SERVICE_AVAILABLE or not self.service:
             return []
 
         try:
-            query = f"'{folder_id}' in parents and trashed=false"
-            results = self.service.files().list(
-                q=query,
+            all_files = []
+            
+            # Get regular spreadsheets
+            spreadsheet_query = f"'{folder_id}' in parents and mimeType='{SPREADSHEET_MIMETYPE}' and trashed=false"
+            spreadsheet_results = self.service.files().list(
+                q=spreadsheet_query,
                 fields="files(id, name, mimeType)"
             ).execute()
-            return results.get('files', [])
+            all_files.extend(spreadsheet_results.get('files', []))
+            
+            # Get spreadsheet shortcuts
+            shortcut_query = f"'{folder_id}' in parents and mimeType='{SHORTCUT_MIMETYPE}' and trashed=false"
+            shortcut_results = self.service.files().list(
+                q=shortcut_query,
+                fields="files(id, name, mimeType, shortcutDetails)"
+            ).execute()
+            
+            for shortcut in shortcut_results.get('files', []):
+                target_id, target_mime = resolve_shortcut(shortcut['id'])
+                if target_id and target_mime == SPREADSHEET_MIMETYPE:
+                    # Add shortcut with resolved target info
+                    shortcut['is_shortcut'] = True
+                    shortcut['target_id'] = target_id
+                    all_files.append(shortcut)
+            
+            return all_files
         except Exception as e:
             print(f"Error getting files in folder: {e}")
             return []
