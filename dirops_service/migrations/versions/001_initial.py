@@ -1,0 +1,390 @@
+"""initial migration
+
+Revision ID: 001_initial
+Revises:
+Create Date: 2026-06-02
+
+"""
+from typing import Sequence, Union
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+revision: str = '001_initial'
+down_revision: Union[str, None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.create_table('projects',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_code', sa.String(50), unique=True, nullable=False),
+        sa.Column('project_name', sa.String(255), nullable=False),
+        sa.Column('customer', sa.String(255)),
+        sa.Column('business_scheme', sa.String(100)),
+        sa.Column('status', sa.String(50)),
+        sa.Column('unit_kerja', sa.String(100)),
+        sa.Column('contract_value_idr', sa.Numeric(18, 2)),
+        sa.Column('contract_value_valas', sa.Numeric(18, 2)),
+        sa.Column('currency', sa.String(10)),
+        sa.Column('cogs_percent', sa.Numeric(5, 2)),
+        sa.Column('cogs_idr', sa.Numeric(18, 2)),
+        sa.Column('gpm_percent', sa.Numeric(5, 2)),
+        sa.Column('gpm_idr', sa.Numeric(18, 2)),
+        sa.Column('contract_signed_date', sa.Date),
+        sa.Column('effective_date', sa.Date),
+        sa.Column('end_date', sa.Date),
+        sa.Column('duration_months', sa.Integer),
+        sa.Column('after_sales_start', sa.Date),
+        sa.Column('after_sales_end', sa.Date),
+        sa.Column('project_leader', sa.String(100)),
+        sa.Column('project_analyst', sa.String(100)),
+        sa.Column('lkp_des_2025', sa.Numeric(5, 2)),
+        sa.Column('target_rkap_2026', sa.Numeric(5, 2)),
+        sa.Column('target_progress_2026', sa.Numeric(5, 2)),
+        sa.Column('progress_achieved', sa.Numeric(5, 2)),
+        sa.Column('accumulated_progress', sa.Numeric(5, 2)),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+    op.create_index('ix_projects_project_code', 'projects', ['project_code'])
+
+    op.create_table('vendors',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('vendor_code', sa.String(50), unique=True),
+        sa.Column('vendor_name', sa.String(255), nullable=False),
+        sa.Column('vendor_type', sa.String(100)),
+        sa.Column('country', sa.String(100)),
+        sa.Column('contact_email', sa.String(255)),
+        sa.Column('contact_phone', sa.String(50)),
+        sa.Column('address', sa.Text()),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('project_milestones',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('milestone_name', sa.String(255), nullable=False),
+        sa.Column('milestone_category', sa.String(100)),
+        sa.Column('percentage', sa.Numeric(5, 2)),
+        sa.Column('target_date', sa.Date),
+        sa.Column('is_cash_in', sa.Boolean),
+        sa.Column('status', sa.String(50)),
+        sa.Column('actual_date', sa.Date),
+        sa.Column('notes', sa.Text()),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('wbs_items',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('parent_id', sa.String(36), sa.ForeignKey('wbs_items.id')),
+        sa.Column('wbs_number', sa.String(50)),
+        sa.Column('wbs_name', sa.String(255), nullable=False),
+        sa.Column('category', sa.String(100)),
+        sa.Column('division', sa.String(100)),
+        sa.Column('pic_name', sa.String(100)),
+        sa.Column('activity_type', sa.String(10)),
+        sa.Column('contract_value', sa.Numeric(18, 2)),
+        sa.Column('weight_percent', sa.Numeric(5, 2)),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('weekly_progress',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('wbs_id', sa.String(36), sa.ForeignKey('wbs_items.id')),
+        sa.Column('year', sa.Integer(), nullable=False),
+        sa.Column('week_number', sa.Integer(), nullable=False),
+        sa.Column('week_label', sa.String(20)),
+        sa.Column('week_start_date', sa.Date()),
+        sa.Column('plan_value', sa.Numeric(5, 2)),
+        sa.Column('actual_value', sa.Numeric(5, 2)),
+        sa.Column('accumulated_plan', sa.Numeric(5, 2)),
+        sa.Column('accumulated_actual', sa.Numeric(5, 2)),
+        sa.Column('deviation', sa.Numeric(5, 2)),
+        sa.Column('revenue_value', sa.Numeric(18, 2)),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+        sa.UniqueConstraint('project_id', 'wbs_id', 'year', 'week_number', name='uq_weekly_progress'),
+    )
+    op.create_index('ix_weekly_progress_project_year_week', 'weekly_progress', ['project_id', 'year', 'week_number'])
+
+    op.create_table('recovery_plans',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('year', sa.Integer(), nullable=False),
+        sa.Column('week_number', sa.Integer(), nullable=False),
+        sa.Column('week_label', sa.String(20)),
+        sa.Column('target_rkap', sa.Numeric(5, 2)),
+        sa.Column('target_project', sa.Numeric(5, 2)),
+        sa.Column('realization', sa.Numeric(5, 2)),
+        sa.Column('deviation', sa.Numeric(5, 2)),
+        sa.Column('recovery_plan_percent', sa.Numeric(5, 2)),
+        sa.Column('recovery_plan_description', sa.Text()),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('action_trackers',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('ref_number', sa.Integer()),
+        sa.Column('action_description', sa.Text()),
+        sa.Column('organization_responsible', sa.String(100)),
+        sa.Column('actionee', sa.String(100)),
+        sa.Column('open_date', sa.Date()),
+        sa.Column('due_date', sa.Date()),
+        sa.Column('due_day', sa.Integer()),
+        sa.Column('status', sa.String(20)),
+        sa.Column('case_description', sa.Text()),
+        sa.Column('update_notes', sa.Text()),
+        sa.Column('reference', sa.String(255)),
+        sa.Column('priority', sa.String(20)),
+        sa.Column('critical_issue_date', sa.Date()),
+        sa.Column('critical_issue', sa.Text()),
+        sa.Column('impact', sa.Text()),
+        sa.Column('action_plan', sa.Text()),
+        sa.Column('high_level_support', sa.Text()),
+        sa.Column('high_level_action_plan', sa.Text()),
+        sa.Column('pmo_recommendation', sa.Text()),
+        sa.Column('closed_date', sa.Date()),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+    op.create_index('ix_action_trackers_project_status', 'action_trackers', ['project_id', 'status'])
+
+    op.create_table('budget_controls',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('wbs_category', sa.String(100)),
+        sa.Column('remaining_budget_sap', sa.Numeric(18, 2)),
+        sa.Column('wbs_not_input', sa.Numeric(18, 2)),
+        sa.Column('total', sa.Numeric(18, 2)),
+        sa.Column('estimated_need', sa.Numeric(18, 2)),
+        sa.Column('difference', sa.Numeric(18, 2)),
+        sa.Column('difference_percent', sa.Numeric(5, 2)),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('budget_detail_lines',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('wbs_object', sa.String(100)),
+        sa.Column('description', sa.String(255)),
+        sa.Column('budget', sa.Numeric(18, 2)),
+        sa.Column('actual', sa.Numeric(18, 2)),
+        sa.Column('commitment', sa.Numeric(18, 2)),
+        sa.Column('park_document', sa.Numeric(18, 2)),
+        sa.Column('remaining_order_plan', sa.Numeric(18, 2)),
+        sa.Column('assigned', sa.Numeric(18, 2)),
+        sa.Column('available', sa.Numeric(18, 2)),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('cashflow_in',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('year', sa.Integer(), nullable=False),
+        sa.Column('month', sa.Integer(), nullable=False),
+        sa.Column('month_label', sa.String(20)),
+        sa.Column('amount', sa.Numeric(18, 2)),
+        sa.Column('description', sa.String(255)),
+        sa.Column('no_nota', sa.String(50)),
+        sa.Column('no_spp', sa.String(50)),
+        sa.Column('notes', sa.Text()),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+    op.create_index('ix_cashflow_in_project_year_month', 'cashflow_in', ['project_id', 'year', 'month'])
+
+    op.create_table('cashflow_out',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('vendor_id', sa.String(36), sa.ForeignKey('vendors.id')),
+        sa.Column('year', sa.Integer(), nullable=False),
+        sa.Column('month', sa.Integer(), nullable=False),
+        sa.Column('month_label', sa.String(20)),
+        sa.Column('amount', sa.Numeric(18, 2)),
+        sa.Column('description', sa.String(255)),
+        sa.Column('no_nota', sa.String(50)),
+        sa.Column('no_spp', sa.String(50)),
+        sa.Column('payment_status', sa.String(50)),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+    op.create_index('ix_cashflow_out_project_year_month', 'cashflow_out', ['project_id', 'year', 'month'])
+
+    op.create_table('procurement_items',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('vendor_id', sa.String(36), sa.ForeignKey('vendors.id')),
+        sa.Column('procurement_name', sa.String(255)),
+        sa.Column('target_date', sa.Date()),
+        sa.Column('status', sa.String(50)),
+        sa.Column('progress', sa.Numeric(5, 2)),
+        sa.Column('priority', sa.String(20)),
+        sa.Column('procurement_type', sa.String(100)),
+        sa.Column('payment_type', sa.String(100)),
+        sa.Column('procurement_policy', sa.String(100)),
+        sa.Column('hps_value', sa.Numeric(18, 2)),
+        sa.Column('hps_date', sa.Date()),
+        sa.Column('rks_value', sa.Numeric(18, 2)),
+        sa.Column('rks_date', sa.Date()),
+        sa.Column('ome_value', sa.Numeric(18, 2)),
+        sa.Column('pr_number', sa.String(50)),
+        sa.Column('proc_ops', sa.String(100)),
+        sa.Column('po_number', sa.String(50)),
+        sa.Column('contract_value', sa.Numeric(18, 2)),
+        sa.Column('currency', sa.String(10)),
+        sa.Column('efficiency', sa.Numeric(5, 2)),
+        sa.Column('due_date', sa.Date()),
+        sa.Column('estimated_delivery', sa.Date()),
+        sa.Column('delivery_status', sa.String(50)),
+        sa.Column('payment_status', sa.String(50)),
+        sa.Column('sph_count', sa.Integer()),
+        sa.Column('hps_count', sa.Integer()),
+        sa.Column('rks_count', sa.Integer()),
+        sa.Column('pr_count', sa.Integer()),
+        sa.Column('rfq_count', sa.Integer()),
+        sa.Column('negotiation_count', sa.Integer()),
+        sa.Column('po_count', sa.Integer()),
+        sa.Column('kontrak_count', sa.Integer()),
+        sa.Column('production_count', sa.Integer()),
+        sa.Column('delivered_count', sa.Integer()),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('procurement_payments',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('procurement_item_id', sa.String(36), sa.ForeignKey('procurement_items.id'), nullable=False),
+        sa.Column('payment_term_number', sa.Integer()),
+        sa.Column('payment_type', sa.String(50)),
+        sa.Column('submit_date', sa.Date()),
+        sa.Column('amount', sa.Numeric(18, 2)),
+        sa.Column('gr_ses', sa.String(50)),
+        sa.Column('no_spp', sa.String(50)),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('proc_ops_status',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('proc_ops_id', sa.Integer()),
+        sa.Column('officer', sa.String(100)),
+        sa.Column('pr_number', sa.String(50)),
+        sa.Column('po_manual', sa.String(50)),
+        sa.Column('po_sap', sa.String(50)),
+        sa.Column('description', sa.Text()),
+        sa.Column('supplier', sa.String(255)),
+        sa.Column('amount', sa.Numeric(18, 2)),
+        sa.Column('currency', sa.String(10)),
+        sa.Column('delivery_time', sa.Date()),
+        sa.Column('project_name', sa.String(255)),
+        sa.Column('user_name', sa.String(100)),
+        sa.Column('status', sa.String(50)),
+        sa.Column('follow_up', sa.Text()),
+        sa.Column('deadline', sa.Date()),
+        sa.Column('issue', sa.Text()),
+        sa.Column('project_code', sa.String(50)),
+        sa.Column('status_2', sa.String(50)),
+        sa.Column('k3', sa.String(50)),
+        sa.Column('k4', sa.String(50)),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('proc_pol_status',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('request_id', sa.Integer()),
+        sa.Column('request_date', sa.Date()),
+        sa.Column('request_description', sa.Text()),
+        sa.Column('request_number', sa.String(50)),
+        sa.Column('project_code', sa.String(50)),
+        sa.Column('project_name', sa.String(255)),
+        sa.Column('project_manager', sa.String(100)),
+        sa.Column('work_unit_officer', sa.String(100)),
+        sa.Column('work_unit_email', sa.String(255)),
+        sa.Column('executor_name', sa.String(100)),
+        sa.Column('user_remarks', sa.Text()),
+        sa.Column('gm_feedback', sa.Text()),
+        sa.Column('request_status', sa.String(50)),
+        sa.Column('posting_date', sa.Date()),
+        sa.Column('rfp_number', sa.String(50)),
+        sa.Column('rfp_date', sa.Date()),
+        sa.Column('rfp_procurement_category', sa.String(100)),
+        sa.Column('rfp_company_name', sa.String(255)),
+        sa.Column('rfp_receiving_email', sa.String(255)),
+        sa.Column('rfp_department', sa.String(100)),
+        sa.Column('rfp_status', sa.String(50)),
+        sa.Column('hps_number', sa.String(50)),
+        sa.Column('hps_date', sa.Date()),
+        sa.Column('hps_currency', sa.String(10)),
+        sa.Column('hps_amount', sa.Numeric(18, 2)),
+        sa.Column('hps_item', sa.String(255)),
+        sa.Column('hps_status', sa.String(50)),
+        sa.Column('rks_number', sa.String(50)),
+        sa.Column('rks_date', sa.Date()),
+        sa.Column('rks_title', sa.String(255)),
+        sa.Column('rks_type', sa.String(100)),
+        sa.Column('rks_method', sa.String(100)),
+        sa.Column('rks_delivery_terms', sa.String(255)),
+        sa.Column('rks_delivery_time', sa.String(100)),
+        sa.Column('rks_payment_terms', sa.String(255)),
+        sa.Column('rks_currency', sa.String(10)),
+        sa.Column('rks_amount', sa.Numeric(18, 2)),
+        sa.Column('rks_status', sa.String(50)),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('project_photos',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id'), nullable=False),
+        sa.Column('activity_date', sa.Date()),
+        sa.Column('activity_description', sa.Text()),
+        sa.Column('photo_url', sa.String(500)),
+        sa.Column('notes', sa.Text()),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+    )
+
+    op.create_table('exchange_rates',
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('project_id', sa.String(36), sa.ForeignKey('projects.id')),
+        sa.Column('currency_code', sa.String(10), nullable=False),
+        sa.Column('rate', sa.Numeric(18, 2), nullable=False),
+        sa.Column('effective_date', sa.Date(), nullable=False),
+        sa.Column('created_at', sa.DateTime()),
+        sa.Column('updated_at', sa.DateTime()),
+        sa.UniqueConstraint('project_id', 'currency_code', 'effective_date', name='uq_exchange_rate'),
+    )
+
+
+def downgrade() -> None:
+    op.drop_table('exchange_rates')
+    op.drop_table('project_photos')
+    op.drop_table('proc_pol_status')
+    op.drop_table('proc_ops_status')
+    op.drop_table('procurement_payments')
+    op.drop_table('procurement_items')
+    op.drop_table('cashflow_out')
+    op.drop_table('cashflow_in')
+    op.drop_table('budget_detail_lines')
+    op.drop_table('budget_controls')
+    op.drop_table('action_trackers')
+    op.drop_table('recovery_plans')
+    op.drop_table('weekly_progress')
+    op.drop_table('wbs_items')
+    op.drop_table('project_milestones')
+    op.drop_table('vendors')
+    op.drop_table('projects')
