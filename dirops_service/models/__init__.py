@@ -49,6 +49,7 @@ from .proc_ops import ProcOpsStatus
 from .proc_pol import ProcPolStatus
 from .photo import ProjectPhoto
 from .exchange import ExchangeRate
+from .access import AdminUser, TelegramUser, FilePermission, UserGlobalAccess, SpreadsheetIndex
 
 __all__ = [
     'db',
@@ -71,4 +72,10 @@ __all__ = [
     'ProcPolStatus',
     'ProjectPhoto',
     'ExchangeRate',
+    # Access management models (migrated from access_manager)
+    'AdminUser',
+    'TelegramUser',
+    'FilePermission',
+    'UserGlobalAccess',
+    'SpreadsheetIndex',
 ]

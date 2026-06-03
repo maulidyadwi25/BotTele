@@ -1,25 +1,38 @@
-from flask import Flask
-from models import db
+"""
+Flask application factory for access_manager web dashboard.
+Now uses the consolidated dirops database instead of its own SQLite.
+"""
 import os
+import sys
+
+# Add parent directory to path to import dirops_service
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+from flask import Flask
+from dirops_service.database import db
+from dirops_service.config import get_config
 
 
 def create_app():
     """Create and configure the Flask application."""
     app = Flask(__name__)
 
-    # Configuration
+    # Get configuration from dirops config
+    config = get_config()
+    app.config.from_object(config)
+
+    # Override secret key if needed
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///access_manager.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # Initialize extensions
+    # Initialize database (uses dirops database)
     db.init_app(app)
 
     # Register blueprints
-    from routes.auth import auth_bp
-    from routes.users import users_bp
-    from routes.files import files_bp
-    from routes.dashboard import dashboard_bp
+    from access_manager.routes.auth import auth_bp
+    from access_manager.routes.users import users_bp
+    from access_manager.routes.files import files_bp
+    from access_manager.routes.dashboard import dashboard_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -36,8 +49,8 @@ def create_app():
 
 def create_default_admin(app):
     """Create a default admin user if none exists."""
-    from models.user import AdminUser
-    
+    from dirops_service.models import AdminUser
+
     with app.app_context():
         if not AdminUser.query.first():
             admin = AdminUser(username='admin')
