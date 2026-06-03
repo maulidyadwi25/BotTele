@@ -6,3 +6,4 @@ google-generativeai>=0.8.0   # untuk Google AI Studio
 python-dotenv>=1.0.0         # untuk load .env
 aiohttp>=3.9.0               # untuk webhook server (production only)
 google-api-python-client>=2.0.0  # untuk Google Drive API
+rapidfuzz>=3.0.0              # untuk fuzzy matching yang lebih cepat

@@ -11,6 +11,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import gsheets_service as gs
 from ai_service import get_ai_provider
+from nlp_service import NLPService, nlp_service, initialize_nlp, process_message, get_projects, refresh_projects, PROJECT_LIST_CACHE_TTL
 
 # Access Manager integration for permission checking
 import sys
@@ -27,6 +28,15 @@ TELEGRAM_PARSE_MODE = os.getenv("TELEGRAM_PARSE_MODE", "HTML")  # default HTML
 FOLDER_ID = os.getenv('FOLDER_ID', '')
 ai_provider = get_ai_provider()
 print(f"AI Provider aktif: {os.getenv('AI_PROVIDER')}")
+
+# Initialize NLP Service
+MASTER_SHEET_ID = os.getenv('MASTER_SHEET_ID', '')
+MASTER_SHEET_NAME = os.getenv('MASTER_SHEET_NAME', 'Projects')
+nlp_initialized = initialize_nlp(MASTER_SHEET_ID, MASTER_SHEET_NAME)
+if nlp_initialized:
+    print(f"NLP Service initialized with {len(get_projects())} projects from Master Sheet")
+else:
+    print("NLP Service initialized without Master Sheet (limited functionality)")
 
 # Cache data sheet
 data_cache = {"content": None, "timestamp": 0}
@@ -639,6 +649,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.chat.send_action(action="typing")
     
+    # =================================================================
+    # NLP PROCESSING LAYER - Extract project and intent
+    # =================================================================
+    nlp_result = process_message(user_question)
+    
+    print(f"[NLP] Result: project={nlp_result.project_name}, intent={nlp_result.intent}, confidence={nlp_result.confidence}")
+    print(f"[NLP] JSON: {nlp_result.to_json()}")
+    
     # Cek apakah ada file/sheet yang sudah dipilih
     selected_file_id = context.user_data.get('selected_file_id')
     selected_sheet_name = context.user_data.get('selected_sheet_name')
@@ -660,7 +678,87 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheet_str = None
     file_context = "Tidak ada file yang dipilih"
     
-    if selected_file_id and selected_sheet_name:
+    # =================================================================
+    # CASE 1: NLP identified a project with high confidence
+    # =================================================================
+    if nlp_result.project_name and nlp_result.confidence >= 0.6:
+        project_name = nlp_result.project_name
+        project_sheet_id = nlp_result.project_id
+        
+        print(f"[DEBUG] NLP identified project: {project_name} (sheet_id: {project_sheet_id})")
+        
+        # Check permission for this project
+        if not permission_service.has_file_permission(telegram_id, project_sheet_id, username):
+            print(f"[DEBUG] User {username} denied access to project: {project_name}")
+            await update.message.reply_text(
+                f"Anda tidak memiliki akses ke proyek '{project_name}'. Hubungi administrator."
+            )
+            return
+        
+        # Use the project's sheet ID to query
+        target_file_id = project_sheet_id
+        target_file_name = project_name
+        file_context = f"Proyek '{project_name}' (NLP matched)"
+        
+        # Get sheets from this project
+        sheets = gs.get_sheets_from_file(target_file_id)
+        
+        if not sheets:
+            await update.message.reply_text(f"Gagal mengambil daftar sheet dari proyek '{project_name}'.")
+            return
+        
+        # Find matching sheets based on intent/query
+        matching_sheets = []
+        for sheet_name in sheets:
+            sheet_lower = sheet_name.lower()
+            if any(k in sheet_lower for k in user_question_lower.split() if len(k) > 2):
+                matching_sheets.append(sheet_name)
+        
+        # If no match, use intent-based selection
+        if not matching_sheets:
+            if nlp_result.intent == 'calculate':
+                for sheet_name in sheets:
+                    if any(k in sheet_name.lower() for k in ['data', 'budget', 'cashflow', 'anggaran']):
+                        matching_sheets.append(sheet_name)
+            elif nlp_result.intent == 'query_data':
+                matching_sheets = sheets[:3]
+        
+        matching_sheets = matching_sheets[:5] if matching_sheets else sheets[:1]
+        
+        # Load data from matching sheets
+        all_data_parts = []
+        for sheet_name in matching_sheets:
+            raw_data = gs.get_sheet_data(target_file_id, sheet_name)
+            if raw_data:
+                all_data_parts.append(f"\n📄 Sheet: {sheet_name}")
+                rows_to_show = min(15, len(raw_data))
+                for i in range(rows_to_show):
+                    if i == 0:
+                        row_data = ' | '.join([str(cell) for cell in raw_data[i]])
+                        all_data_parts.append(f"   Header: {row_data}")
+                    else:
+                        row_data = ' | '.join([str(cell) for cell in raw_data[i]])
+                        all_data_parts.append(f"   {row_data}")
+                if len(raw_data) > rows_to_show:
+                    all_data_parts.append(f"   ... dan {len(raw_data) - rows_to_show} baris lainnya")
+        
+        sheet_str = "\n".join(all_data_parts) if all_data_parts else "Data tidak ditemukan"
+        file_context = f"Proyek '{project_name}' ({len(matching_sheets)} sheet)"
+    
+    # =================================================================
+    # CASE 2: Project not found but has suggestions
+    # =================================================================
+    elif nlp_result.suggestions and len(nlp_result.suggestions) > 0:
+        suggestions = nlp_result.suggestions[:5]
+        suggestions_text = "\n".join([f"  • {s}" for s in suggestions])
+        await update.message.reply_text(
+            f"⚠️ Proyek '{user_question}' tidak ditemukan.\n\n"
+            f"Mungkin yang Anda maksud:\n{suggestions_text}\n\n"
+            f"Gunakan /start untuk melihat daftar proyek."
+        )
+        return
+    
+    elif selected_file_id and selected_sheet_name:
         # User has selected a specific file/sheet - load that data
         print(f"[DEBUG] Loading data from selected file/sheet: {selected_file_name}/{selected_sheet_name}")
         raw_data = gs.get_sheet_data(selected_file_id, selected_sheet_name)
@@ -849,8 +947,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         sheet_str = "\n".join(all_data_parts) if all_data_parts else "Data tidak ditemukan"
     else:
-        # No specific file/sheet selected and no search intent
-        # Just respond without loading spreadsheet data
+        # No NLP match and no context - use cached projects as fallback
+        print(f"[DEBUG] No NLP match and no context - checking cached projects")
+        
+        cached_projects = get_projects()
+        if cached_projects:
+            # Show list of available projects from Master Sheet
+            project_list = "\n".join([f"  • {p['name']}" for p in cached_projects[:15]])
+            more = f"\n  ... dan {len(cached_projects) - 15} proyek lainnya" if len(cached_projects) > 15 else ""
+            await update.message.reply_text(
+                f"📋 **Daftar Proyek Tersedia** ({len(cached_projects)} proyek)\n\n"
+                f"{project_list}{more}\n\n"
+                f"Ketik nama proyek untuk melihat datanya, atau gunakan /start untuk memilih file."
+            )
+            return
+        
+        # Fallback to original behavior
         print(f"[DEBUG] No search intent - responding without spreadsheet data")
         sheet_str = "Tidak ada data yang dimuat. Gunakan /start untuk memilih file atau gunakan kata kunci seperti 'buka', 'cari', 'cek' untuk mencari data."
     
@@ -876,11 +988,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Error AI: {e}")
         await update.message.reply_text("Maaf, terjadi kesalahan.")
 
+async def nlp_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show NLP service status and cached projects"""
+    projects = get_projects()
+    cached_count = len(projects)
+    
+    status_text = (
+        f"🧠 **NLP Service Status**\n\n"
+        f"• Master Sheet ID: `{MASTER_SHEET_ID or 'Not configured'}`\n"
+        f"• Cached Projects: {cached_count}\n"
+        f"• Cache TTL: {PROJECT_LIST_CACHE_TTL}s\n\n"
+    )
+    
+    if cached_count > 0:
+        status_text += "📋 **Cached Projects:**\n"
+        for p in projects[:10]:
+            status_text += f"  • {p['name']}\n"
+        if cached_count > 10:
+            status_text += f"  ... dan {cached_count - 10} proyek lainnya\n"
+    
+    await update.message.reply_text(status_text, parse_mode=TELEGRAM_PARSE_MODE)
+
+async def nlp_refresh_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Force refresh NLP project cache"""
+    refresh_projects()
+    projects = get_projects()
+    await update.message.reply_text(
+        f"🔄 NLP cache refreshed! {len(projects)} projects loaded.",
+        parse_mode=TELEGRAM_PARSE_MODE
+    )
+
 def main():
     print("Memulai bot Telegram...")
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("sheets", sheets_command))
+    app.add_handler(CommandHandler("nlp_status", nlp_status_command))
+    app.add_handler(CommandHandler("nlp_refresh", nlp_refresh_command))
     app.add_handler(CallbackQueryHandler(handle_callback_query))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling()
