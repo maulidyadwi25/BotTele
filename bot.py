@@ -13,6 +13,25 @@ import gsheets_service as gs
 from ai_service import get_ai_provider
 from nlp_service import NLPService, nlp_service, initialize_nlp, process_message, get_projects, refresh_projects, PROJECT_LIST_CACHE_TTL
 
+# DirOps local files service - use local Excel files instead of Google Sheets
+USE_LOCAL_FILES = True  # Set to False to revert to Google Sheets
+if USE_LOCAL_FILES:
+    try:
+        from dirops_service import local_files as dirops
+        print("Using DirOps local Excel files instead of Google Sheets")
+    except ImportError as e:
+        print(f"Failed to import local_files, falling back to Google Sheets: {e}")
+        USE_LOCAL_FILES = False
+
+# DirOps database query service for direct DB access
+try:
+    from dirops_service.query_service import get_budget_summary_text, get_project_summary, get_project_contract_value
+    USE_QUERY_SERVICE = True
+    print("Using DirOps query service for database access")
+except ImportError as e:
+    print(f"Failed to import query_service: {e}")
+    USE_QUERY_SERVICE = False
+
 # Access Manager integration for permission checking
 import sys
 sys.path.insert(0, 'access_manager')
@@ -47,8 +66,40 @@ callback_cache = {}
 
 def get_sheet_data():
     """Wrapper untuk mengambil data dari semua file dan sheet."""
-    # Cache bisa Anda tambahkan lagi di sini jika diperlukan
+    if USE_LOCAL_FILES:
+        return dirops.get_all_data_from_files()
     return gs.get_all_data_from_folder()
+
+# Wrapper functions for local files
+def get_spreadsheet_files():
+    """Get list of spreadsheet files - uses local files or Google Sheets based on USE_LOCAL_FILES"""
+    if USE_LOCAL_FILES:
+        return dirops.get_dirops_files()
+    return gs.get_spreadsheet_files()
+
+def get_sheets_from_file(file_id):
+    """Get list of sheets from a file - uses local files or Google Sheets based on USE_LOCAL_FILES"""
+    if USE_LOCAL_FILES:
+        return dirops.get_dirops_sheets(file_id)
+    return gs.get_sheets_from_file(file_id)
+
+def get_sheet_data(file_id, sheet_name):
+    """Get data from a specific sheet - uses local files or Google Sheets based on USE_LOCAL_FILES"""
+    if USE_LOCAL_FILES:
+        return dirops.get_dirops_sheet_data(file_id, sheet_name)
+    return gs.get_sheet_data(file_id, sheet_name)
+
+def get_file_name(file_id):
+    """Get file name from file_id - uses local files or Google Sheets based on USE_LOCAL_FILES"""
+    if USE_LOCAL_FILES:
+        return dirops.get_project_excel_name(file_id) or file_id
+    return gs.get_file_name(file_id)
+
+def get_files_in_folder(folder_id: str = None):
+    """Get files in folder - uses local files or Google Sheets based on USE_LOCAL_FILES"""
+    if USE_LOCAL_FILES:
+        return dirops.get_files_in_folder(folder_id)
+    return gs.get_files_in_folder(folder_id)
 
 def encode_callback_data(data):
     """Encode callback data untuk menghindari batasan 64 bytes."""
@@ -77,7 +128,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"[DEBUG] start_command - User: {username} ({telegram_id})")
     
     # Check if user is registered in access manager
-    session = get_session()
+    ctx, session = get_session()
     try:
         # Try to find by telegram_id first, then fallback to username
         existing_user = session.query(TelegramUser).filter_by(telegram_id=telegram_id).first()
@@ -100,11 +151,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     finally:
         session.close()
+        ctx.pop()
     
     keyboard = []
     
     # Ambil daftar file spreadsheet dan folder
-    spreadsheet_files = gs.get_spreadsheet_files()
+    spreadsheet_files = get_spreadsheet_files()
     
     if not spreadsheet_files:
         await update.message.reply_text("Tidak ada file spreadsheet yang ditemukan di folder.")
@@ -159,7 +211,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def sheets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menampilkan semua sheet dari semua file spreadsheet."""
-    spreadsheet_files = gs.get_spreadsheet_files()
+    spreadsheet_files = get_spreadsheet_files()
     
     if not spreadsheet_files:
         await update.message.reply_text("❌ Tidak ada file spreadsheet yang ditemukan di folder.")
@@ -174,7 +226,7 @@ async def sheets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         output += f"📁 *File:* {file_name}\n"
         
         # Ambil daftar sheet dari file
-        sheets = gs.get_sheets_from_file(file_id)
+        sheets = get_sheets_from_file(file_id)
         
         if not sheets:
             output += "   ❌ Gagal mengambil sheet\n"
@@ -209,7 +261,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data['current_folder_id'] = folder_id
         
         # Ambil daftar file dan folder dalam folder tersebut
-        files = gs.get_files_in_folder(folder_id)
+        files = get_files_in_folder(folder_id)
         
         print(f"[DEBUG] User {username} - raw files in folder: {len(files) if files else 0}")
         
@@ -290,7 +342,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             return
         
         # Ambil nama file
-        file_name = gs.get_file_name(file_id)
+        file_name = get_file_name(file_id)
         
         print(f"[DEBUG] User {username} accessing file: {file_name}")
         
@@ -299,7 +351,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data['selected_file_name'] = file_name
         
         # Ambil daftar sheet dari file
-        sheets = gs.get_sheets_from_file(file_id)
+        sheets = get_sheets_from_file(file_id)
         
         if not sheets:
             await query.edit_message_text("❌ Gagal mengambil daftar sheet dari file tersebut.")
@@ -380,12 +432,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         
         # Ambil data dari sheet tertentu
         try:
-            client = gs.get_sheets_client()
-            spreadsheet = client.open_by_key(file_id)
-            worksheet = spreadsheet.worksheet(sheet_name)
-            
-            # Ambil semua data dari sheet
-            data_values = worksheet.get_all_values()
+            data_values = get_sheet_data(file_id, sheet_name)
             
             if not data_values:
                 await query.edit_message_text(f"❌ Sheet '{sheet_name}' kosong.")
@@ -541,7 +588,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             sheets = indexed.get_sheet_list()
             file_name = indexed.file_name
         else:
-            sheets = gs.get_sheets_from_file(file_id)
+            sheets = get_sheets_from_file(file_id)
         index_service.close()
         
         if not sheets:
@@ -575,7 +622,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         
         print(f"[DEBUG] User {username} going back to root files list")
         
-        spreadsheet_files = gs.get_spreadsheet_files()
+        spreadsheet_files = get_spreadsheet_files()
         
         if not spreadsheet_files:
             await query.edit_message_text("Tidak ada file spreadsheet yang ditemukan di folder.")
@@ -620,14 +667,41 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode=TELEGRAM_PARSE_MODE
         )
 
+def debug_logIncomingMessage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Log incoming message details for debugging."""
+    telegram_id = str(update.effective_user.id)
+    username = update.effective_user.username
+    chat_id = update.message.chat_id
+    message_id = update.message.message_id
+    text = update.message.text or ""
+    
+    print(f"""
+[DEBUG] ================== INCOMING MESSAGE ==================
+[DEBUG] Chat ID: {chat_id}
+[DEBUG] Message ID: {message_id}
+[DEBUG] User: {username} ({telegram_id})
+[DEBUG] Text: {text[:200]}{'...' if len(text) > 200 else ''}
+[DEBUG] ========================================================
+""")
+
+def debug_logOutgoingResponse(response_text: str, context: str = ""):
+    """Log outgoing response for debugging."""
+    print(f"""
+[DEBUG] ================== OUTGOING RESPONSE ==================
+[DEBUG] Context: {context}
+[DEBUG] Response: {response_text[:300]}{'...' if len(response_text) > 300 else ''}
+[DEBUG] ========================================================
+""")
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = str(update.effective_user.id)
     username = update.effective_user.username
     
-    print(f"[DEBUG] handle_message - User: {username} ({telegram_id})")
+    # Debug: Log incoming message
+    debug_logIncomingMessage(update, context)
     
     # Check if user is registered in access manager
-    session = get_session()
+    ctx, session = get_session()
     try:
         # Try to find by telegram_id first, then fallback to username
         existing_user = session.query(TelegramUser).filter_by(telegram_id=telegram_id).first()
@@ -636,12 +710,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if not existing_user:
             print(f"[DEBUG] Unregistered user {username} ({telegram_id}) tried to send message")
-            await update.message.reply_text(
-                "Maaf, Anda belum terdaftar dalam sistem. Silakan hubungi administrator untuk mendapatkan akses."
-            )
+            response = "Maaf, Anda belum terdaftar dalam sistem. Silakan hubungi administrator untuk mendapatkan akses."
+            debug_logOutgoingResponse(response, "Unregistered User")
+            await update.message.reply_text(response)
             return
     finally:
         session.close()
+        ctx.pop()
     
     user_question = update.message.text.strip()
     if not user_question:
@@ -679,6 +754,78 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_context = "Tidak ada file yang dipilih"
     
     # =================================================================
+    # DATABASE QUERY MODE: Handle budget/summary queries directly from DB
+    # =================================================================
+    if USE_QUERY_SERVICE and nlp_result.project_name and nlp_result.confidence >= 0.6:
+        # Extract project code from NLP result
+        project_name = nlp_result.project_name
+        
+        # Try to extract project code from the full name
+        import re
+        # Updated regex to capture full project code like 1LC-522UD019
+        project_code_match = re.match(r'^([A-Z0-9]+-\d+[A-Z0-9]+)', project_name)
+        project_code = project_code_match.group(1) if project_code_match else project_name
+        
+        # Check if query is asking for budget/summary/contract info
+        budget_keywords = ['budget', 'anggaran', 'dana', 'total', 'nilai', 'contract', 'kontrak', 'summary', 'ringkasan', 'berapa', 'saldo']
+        is_budget_query = any(k in user_question_lower for k in budget_keywords)
+        
+        print(f"[DEBUG] DB Query Mode - project: {project_name}, code: {project_code}, is_budget_query: {is_budget_query}")
+        
+        if is_budget_query:
+            # Use database query service
+            if 'budget' in user_question_lower or 'anggaran' in user_question_lower or 'dana' in user_question_lower:
+                budget_text = get_budget_summary_text(project_code)
+                debug_logOutgoingResponse(budget_text, "Budget Query")
+                await update.message.reply_text(budget_text, parse_mode=TELEGRAM_PARSE_MODE)
+                return
+            elif 'contract' in user_question_lower or 'kontrak' in user_question_lower or 'nilai' in user_question_lower:
+                contract_info = get_project_contract_value(project_code)
+                if contract_info:
+                    lines = [
+                        f"📋 **Info Kontrak - {contract_info['project_name']}**",
+                        f"",
+                        f"🏢 Customer: {contract_info['customer'] or 'N/A'}",
+                        f"📊 Status: {contract_info['status'] or 'N/A'}",
+                    ]
+                    if contract_info.get('contract_value_idr'):
+                        lines.append(f"💰 Nilai Kontrak (IDR): Rp {contract_info['contract_value_idr']:,.0f}".replace(',', '.'))
+                    if contract_info.get('contract_value_valas'):
+                        lines.append(f"💵 Nilai Kontrak (Valas): {contract_info['contract_value_valas']:,.2f} {contract_info.get('currency', '')}")
+                    if contract_info.get('progress_achieved'):
+                        lines.append(f"📈 Progress: {contract_info['progress_achieved']:.2f}%")
+                    
+                    response = "\n".join(lines)
+                    debug_logOutgoingResponse(response, "Contract Info")
+                    await update.message.reply_text(response, parse_mode=TELEGRAM_PARSE_MODE)
+                    return
+            else:
+                # General summary
+                summary = get_project_summary(project_code)
+                if summary:
+                    lines = [
+                        f"📊 **Summary - {summary['project_name']}**",
+                        f"",
+                        f"🏢 Customer: {summary['customer'] or 'N/A'}",
+                        f"📋 Status: {summary['status'] or 'N/A'}",
+                    ]
+                    if summary.get('contract_value_idr'):
+                        lines.append(f"💰 Nilai Kontrak: Rp {summary['contract_value_idr']:,.0f}".replace(',', '.'))
+                    if summary.get('progress_achieved'):
+                        lines.append(f"📈 Progress: {summary['progress_achieved']:.2f}%")
+                    if summary.get('total_budget'):
+                        lines.append(f"💵 Total Budget: Rp {summary['total_budget']:,.0f}".replace(',', '.'))
+                    if summary.get('remaining_budget'):
+                        lines.append(f"💵 Sisa Budget: Rp {summary['remaining_budget']:,.0f}".replace(',', '.'))
+                    lines.append(f"")
+                    lines.append(f"📝 Actions: {summary['open_actions']} open, {summary['closed_actions']} closed, {summary['overdue_actions']} overdue")
+                    
+                    response = "\n".join(lines)
+                    debug_logOutgoingResponse(response, "Project Summary")
+                    await update.message.reply_text(response, parse_mode=TELEGRAM_PARSE_MODE)
+                    return
+    
+    # =================================================================
     # CASE 1: NLP identified a project with high confidence
     # =================================================================
     if nlp_result.project_name and nlp_result.confidence >= 0.6:
@@ -690,9 +837,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Check permission for this project
         if not permission_service.has_file_permission(telegram_id, project_sheet_id, username):
             print(f"[DEBUG] User {username} denied access to project: {project_name}")
-            await update.message.reply_text(
-                f"Anda tidak memiliki akses ke proyek '{project_name}'. Hubungi administrator."
-            )
+            response = f"Anda tidak memiliki akses ke proyek '{project_name}'. Hubungi administrator."
+            debug_logOutgoingResponse(response, "Permission Denied")
+            await update.message.reply_text(response)
             return
         
         # Use the project's sheet ID to query
@@ -701,10 +848,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_context = f"Proyek '{project_name}' (NLP matched)"
         
         # Get sheets from this project
-        sheets = gs.get_sheets_from_file(target_file_id)
+        sheets = get_sheets_from_file(target_file_id)
         
         if not sheets:
-            await update.message.reply_text(f"Gagal mengambil daftar sheet dari proyek '{project_name}'.")
+            response = f"Gagal mengambil daftar sheet dari proyek '{project_name}'."
+            debug_logOutgoingResponse(response, "Failed to Get Sheets")
+            await update.message.reply_text(response)
             return
         
         # Find matching sheets based on intent/query
@@ -728,7 +877,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Load data from matching sheets
         all_data_parts = []
         for sheet_name in matching_sheets:
-            raw_data = gs.get_sheet_data(target_file_id, sheet_name)
+            raw_data = get_sheet_data(target_file_id, sheet_name)
             if raw_data:
                 all_data_parts.append(f"\n📄 Sheet: {sheet_name}")
                 rows_to_show = min(15, len(raw_data))
@@ -746,22 +895,119 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_context = f"Proyek '{project_name}' ({len(matching_sheets)} sheet)"
     
     # =================================================================
-    # CASE 2: Project not found but has suggestions
+    # CASE 2: Project not found but has suggestions - try auto-match if high confidence suggestion
     # =================================================================
     elif nlp_result.suggestions and len(nlp_result.suggestions) > 0:
-        suggestions = nlp_result.suggestions[:5]
-        suggestions_text = "\n".join([f"  • {s}" for s in suggestions])
-        await update.message.reply_text(
-            f"⚠️ Proyek '{user_question}' tidak ditemukan.\n\n"
-            f"Mungkin yang Anda maksud:\n{suggestions_text}\n\n"
-            f"Gunakan /start untuk melihat daftar proyek."
-        )
-        return
+        # Check if top suggestion has high enough confidence to auto-match
+        # Find the suggestion's actual confidence from the suggestions list
+        top_suggestion = nlp_result.suggestions[0] if nlp_result.suggestions else None
+        
+        # Get all projects to find the matched project's details
+        all_projects = get_projects()
+        matched_project = None
+        for proj in all_projects:
+            if proj.get('name') == top_suggestion or proj.get('project_name') == top_suggestion:
+                matched_project = proj
+                break
+        
+        # Auto-proceed if we have a clear match (top suggestion is very close)
+        # Check if the suggestion query contains meaningful keywords that match
+        user_question_lower = user_question.lower()
+        query_words = [w for w in user_question_lower.split() if len(w) > 2]
+        
+        should_auto_match = False
+        if matched_project:
+            proj_name_lower = matched_project.get('name', '').lower()
+            proj_code = matched_project.get('project_code', '').lower()
+            search_terms = matched_project.get('search_terms', [])
+            
+            # Check if any significant word from query appears in project name/code
+            for word in query_words:
+                # Direct match in name or code
+                if word in proj_name_lower or word in proj_code or word.replace(' ', '') in proj_name_lower:
+                    should_auto_match = True
+                    break
+                # Match against search terms (extracted keywords from project name)
+                for term in search_terms:
+                    if word in term or term in word:
+                        should_auto_match = True
+                        break
+                if should_auto_match:
+                    break
+        
+        if should_auto_match and matched_project:
+            # Use the top suggestion automatically
+            print(f"[DEBUG] Auto-matching to suggestion: {top_suggestion}")
+            project_name = matched_project.get('name') or top_suggestion
+            project_sheet_id = matched_project.get('sheet_id') or matched_project.get('project_code', '')
+            
+            # Check permission
+            if not permission_service.has_file_permission(telegram_id, project_sheet_id, username):
+                response = f"Anda tidak memiliki akses ke proyek '{project_name}'. Hubungi administrator."
+                debug_logOutgoingResponse(response, "Permission Denied (Auto-match)")
+                await update.message.reply_text(response)
+                return
+            
+            target_file_id = project_sheet_id
+            target_file_name = project_name
+            file_context = f"Proyek '{project_name}' (auto-matched from suggestion)"
+            
+            sheets = get_sheets_from_file(target_file_id)
+            
+            if not sheets:
+                response = f"Gagal mengambil daftar sheet dari proyek '{project_name}'."
+                debug_logOutgoingResponse(response, "Failed to Get Sheets (Auto-match)")
+                await update.message.reply_text(response)
+                return
+            
+            # Find matching sheets
+            matching_sheets = []
+            for sheet_name in sheets:
+                sheet_lower = sheet_name.lower()
+                if any(k in sheet_lower for k in user_question_lower.split() if len(k) > 2):
+                    matching_sheets.append(sheet_name)
+            
+            if not matching_sheets:
+                matching_sheets = sheets[:3]
+            
+            matching_sheets = matching_sheets[:5] if matching_sheets else sheets[:1]
+            
+            # Load data
+            all_data_parts = []
+            for sheet_name in matching_sheets:
+                raw_data = get_sheet_data(target_file_id, sheet_name)
+                if raw_data:
+                    all_data_parts.append(f"\n📄 Sheet: {sheet_name}")
+                    rows_to_show = min(15, len(raw_data))
+                    for i in range(rows_to_show):
+                        if i == 0:
+                            row_data = ' | '.join([str(cell) for cell in raw_data[i]])
+                            all_data_parts.append(f"   Header: {row_data}")
+                        else:
+                            row_data = ' | '.join([str(cell) for cell in raw_data[i]])
+                            all_data_parts.append(f"   {row_data}")
+                    if len(raw_data) > rows_to_show:
+                        all_data_parts.append(f"   ... dan {len(raw_data) - rows_to_show} baris lainnya")
+            
+            sheet_str = "\n".join(all_data_parts) if all_data_parts else "Data tidak ditemukan"
+            file_context = f"Proyek '{project_name}' ({len(matching_sheets)} sheet)"
+        else:
+            # Not confident enough, show suggestions
+            suggestions = nlp_result.suggestions[:5]
+            suggestions_text = "\n".join([f"  • {s}" for s in suggestions])
+            response = (
+                f"⚠️ Proyek '{user_question}' tidak ditemukan.\n\n"
+                f"Mungkin yang Anda maksud:\n{suggestions_text}\n\n"
+                f"Gunakan /start untuk melihat daftar proyek."
+            )
+            debug_logOutgoingResponse(response, "Suggestions")
+            await update.message.reply_text(response)
+            return
     
     elif selected_file_id and selected_sheet_name:
         # User has selected a specific file/sheet - load that data
         print(f"[DEBUG] Loading data from selected file/sheet: {selected_file_name}/{selected_sheet_name}")
-        raw_data = gs.get_sheet_data(selected_file_id, selected_sheet_name)
+        raw_data = get_sheet_data(selected_file_id, selected_sheet_name)
         file_context = f"File '{selected_file_name}', Sheet '{selected_sheet_name}'"
         
         if raw_data:
@@ -784,7 +1030,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if indexed:
             all_sheets = indexed.get_sheet_list()
         else:
-            all_sheets = gs.get_sheets_from_file(selected_file_id)
+            all_sheets = get_sheets_from_file(selected_file_id)
         index_service.close()
         
         # Find matching sheets based on query
@@ -813,7 +1059,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Load data from all matching sheets
         all_data_parts = []
         for sheet_name in matching_sheets:
-            raw_data = gs.get_sheet_data(selected_file_id, sheet_name)
+            raw_data = get_sheet_data(selected_file_id, sheet_name)
             if raw_data:
                 all_data_parts.append(f"\n📄 Sheet: {sheet_name}")
                 rows_to_show = min(10, len(raw_data))
@@ -868,9 +1114,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"[DEBUG] Found {len(accessible_indices)} accessible files matching '{search_query}'")
             
             if not accessible_indices:
-                await update.message.reply_text(
-                    f"Tidak ada file yang cocok dengan '{search_query}'. Gunakan /start untuk melihat file yang tersedia."
-                )
+                response = f"Tidak ada file yang cocok dengan '{search_query}'. Gunakan /start untuk melihat file yang tersedia."
+                debug_logOutgoingResponse(response, "No Matching Files")
+                await update.message.reply_text(response)
                 index_service.close()
                 return
             
@@ -896,9 +1142,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"[DEBUG] User {username} - total accessible indexed files: {len(accessible_indices)}")
             
             if not accessible_indices:
-                await update.message.reply_text(
-                    "Anda tidak memiliki akses ke file manapun. Gunakan /start untuk memilih file."
-                )
+                response = "Anda tidak memiliki akses ke file manapun. Gunakan /start untuk memilih file."
+                debug_logOutgoingResponse(response, "No Accessible Files")
+                await update.message.reply_text(response)
                 index_service.close()
                 return
             
@@ -928,7 +1174,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
             
             for sheet_name in sheets:
-                raw_data = gs.get_sheet_data(idx.file_id, sheet_name)
+                raw_data = get_sheet_data(idx.file_id, sheet_name)
                 
                 if raw_data:
                     all_data_parts.append(f"   📄 Sheet: {sheet_name}")
@@ -955,11 +1201,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Show list of available projects from Master Sheet
             project_list = "\n".join([f"  • {p['name']}" for p in cached_projects[:15]])
             more = f"\n  ... dan {len(cached_projects) - 15} proyek lainnya" if len(cached_projects) > 15 else ""
-            await update.message.reply_text(
+            response = (
                 f"📋 **Daftar Proyek Tersedia** ({len(cached_projects)} proyek)\n\n"
                 f"{project_list}{more}\n\n"
                 f"Ketik nama proyek untuk melihat datanya, atau gunakan /start untuk memilih file."
             )
+            debug_logOutgoingResponse(response, "Project List")
+            await update.message.reply_text(response)
             return
         
         # Fallback to original behavior
@@ -983,10 +1231,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         answer = ai_provider.generate_response(system_prompt, user_question)
         # Langsung kirim dengan parse_mode HTML (tidak perlu escape)
+        debug_logOutgoingResponse(answer, f"AI Response - {file_context}")
         await update.message.reply_text(answer, parse_mode=TELEGRAM_PARSE_MODE)
     except Exception as e:
         print(f"Error AI: {e}")
-        await update.message.reply_text("Maaf, terjadi kesalahan.")
+        response = "Maaf, terjadi kesalahan."
+        debug_logOutgoingResponse(response, "Error Exception")
+        await update.message.reply_text(response)
 
 async def nlp_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show NLP service status and cached projects"""

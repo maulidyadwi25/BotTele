@@ -283,6 +283,15 @@ input:checked + .toggle-slider:before {
         const idText = cells[1].querySelector('.text-label-md').textContent.replace('ID: ', '');
         document.getElementById('telegramId').value = idText === 'None' ? '' : idText;
         
+        // Get username from cell[2] - format is "@username" or "N/A"
+        const usernameText = cells[2].textContent.trim();
+        const username = usernameText.startsWith('@') ? usernameText.slice(1) : (usernameText === 'N/A' ? '' : usernameText);
+        document.getElementById('username').value = username;
+        
+        // Get display_name from cell[1] first div text
+        const displayName = cells[1].querySelector('.text-body-md').textContent;
+        document.getElementById('displayName').value = displayName === 'Unknown' ? '' : displayName;
+        
         document.getElementById('userModal').classList.remove('hidden');
     }
     

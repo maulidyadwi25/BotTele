@@ -9,7 +9,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', None)
-    SQLALCHEMY_ENGINE_OPTIONS = os.getenv('SQLALCHEMY_ENGINE_OPTIONS', None)
+    SQLALCHEMY_ENGINE_OPTIONS = os.getenv('SQLALCHEMY_ENGINE_OPTIONS', {})
 
     DB_TYPE = os.getenv('DB_TYPE', 'sqlite')
     DB_NAME = os.getenv('DB_NAME', 'dirops.db')

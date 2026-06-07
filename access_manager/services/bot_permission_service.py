@@ -73,7 +73,7 @@ class BotPermissionService:
             telegram_id: User's Telegram ID (string)
             username: User's Telegram username (optional, for fallback lookup)
         """
-        session = get_session()
+        ctx, session = get_session()
         try:
             user = self._get_user_by_telegram_id_with_username_fallback(session, telegram_id, username)
             if not user or user.status != 'active':
@@ -82,6 +82,7 @@ class BotPermissionService:
             return global_access.has_global_access if global_access else False
         finally:
             session.close()
+            ctx.pop()
 
     def has_file_permission(self, telegram_id, file_id, username=None):
         """Check if a user has permission for a specific file.
@@ -91,7 +92,7 @@ class BotPermissionService:
             file_id: File/folder ID to check permission for
             username: User's Telegram username (optional, for fallback lookup)
         """
-        session = get_session()
+        ctx, session = get_session()
         try:
             user = self._get_user_by_telegram_id_with_username_fallback(session, telegram_id, username)
             
@@ -124,13 +125,14 @@ class BotPermissionService:
             return permission is not None
         finally:
             session.close()
+            ctx.pop()
 
     def create_user(self, telegram_id=None, username=None, display_name=None):
         """Create a new Telegram user.
         
         Either telegram_id OR username must be provided.
         """
-        session = get_session()
+        ctx, session = get_session()
         try:
             # Check if user already exists by telegram_id
             if telegram_id:
@@ -168,3 +170,4 @@ class BotPermissionService:
             return {'success': False, 'error': str(e)}
         finally:
             session.close()
+            ctx.pop()

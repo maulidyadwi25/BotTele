@@ -19,12 +19,14 @@ class GUID(db.TypeDecorator):
         if value is not None:
             if not isinstance(value, str):
                 value = str(value)
+            if not isinstance(value, uuid.UUID):
+                value = uuid.UUID(value).bytes
         return value
 
     def process_result_value(self, value, dialect):
         if value is not None:
-            if not isinstance(value, str):
-                value = str(value)
+            if not isinstance(value, uuid.UUID):
+                value = uuid.UUID(bytes=value)
         return value
 
 

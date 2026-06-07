@@ -23,11 +23,12 @@ class SpreadsheetIndexService:
     
     def __init__(self):
         self._session = None
+        self._ctx = None
     
     @property
     def session(self):
         if self._session is None:
-            self._session = get_session()
+            self._ctx, self._session = get_session()
         return self._session
     
     def close(self):
@@ -35,6 +36,9 @@ class SpreadsheetIndexService:
         if self._session:
             self._session.close()
             self._session = None
+        if self._ctx:
+            self._ctx.pop()
+            self._ctx = None
     
     def get_file_index(self, file_id: str) -> Optional[SpreadsheetIndex]:
         """Get file index from database, return None if not found"""

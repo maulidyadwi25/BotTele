@@ -1,0 +1,5 @@
+access_manager db id: 2340347732592
+access_manager db class: <class 'flask_sqlalchemy.extension.SQLAlchemy'>
+dirops db id: 2340348720656
+dirops db class: <class 'flask_sqlalchemy.extension.SQLAlchemy'>
+Are they the same? False

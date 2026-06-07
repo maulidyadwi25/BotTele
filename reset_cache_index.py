@@ -85,7 +85,7 @@ def reset_spreadsheet_index():
     from access_manager.models.bot_db import get_session, SpreadsheetIndex
     from access_manager.services.spreadsheet_index_service import SpreadsheetIndexService
     
-    session = get_session()
+    ctx, session = get_session()
     
     try:
         # Get current index count
@@ -114,6 +114,11 @@ def reset_spreadsheet_index():
         session.rollback()
         print(f"[ERROR] Failed to rebuild index: {e}")
         raise
+    finally:
+        if session:
+            session.close()
+        if ctx:
+            ctx.pop()
 
 
 def show_status():
@@ -129,10 +134,11 @@ def show_status():
     # Database index
     try:
         from access_manager.models.bot_db import get_session, SpreadsheetIndex
-        session = get_session()
+        ctx, session = get_session()
         active_count = session.query(SpreadsheetIndex).filter_by(is_active=True).count()
         inactive_count = session.query(SpreadsheetIndex).filter_by(is_active=False).count()
         session.close()
+        ctx.pop()
         print(f"\nSpreadsheet Index (Database):")
         print(f"  - Active indexes: {active_count}")
         print(f"  - Inactive indexes: {inactive_count}")

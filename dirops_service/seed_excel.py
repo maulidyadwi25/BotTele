@@ -38,9 +38,28 @@ def parse_value(val):
         return None
 
     # Try parsing as number
+    # Handle Indonesian number format: 2.735.778.108 (dots as thousand sep) or 2.735.778.108,50 (decimal comma)
     for typ in (float, int):
         try:
-            cleaned = val.replace(',', '').replace('%', '').replace(' ', '')
+            cleaned = val.replace('%', '').replace(' ', '')
+            # Check if it's Indonesian format (dots as thousand separators)
+            # Pattern: dots appear between groups of 3 digits
+            if ',' in cleaned:
+                # Has comma - could be decimal separator (Indonesian) or thousand separator (US)
+                parts = cleaned.split(',')
+                if len(parts) == 2 and len(parts[1]) <= 2:
+                    # Likely decimal comma (Indonesian): 2.735.778.108,50
+                    cleaned = parts[0].replace('.', '') + '.' + parts[1]
+                else:
+                    # Likely thousand separator comma: 2,735,778.108
+                    cleaned = cleaned.replace(',', '')
+            elif '.' in cleaned:
+                # Check if dots are thousand separators (Indonesian)
+                # If we have groups of 3 digits separated by dots, it's Indonesian format
+                dot_count = cleaned.count('.')
+                if dot_count >= 2:
+                    # Likely Indonesian: 2.735.778.108
+                    cleaned = cleaned.replace('.', '')
             return typ(cleaned)
         except (ValueError, InvalidOperation):
             pass
@@ -68,8 +87,9 @@ def parse_project_profile(ws):
     """Parse Project Profile sheet."""
     data = {}
     for row in range(1, ws.max_row + 1):
-        key_cell = ws.cell(row=row, column=1).value
-        val_cell = ws.cell(row=row, column=2).value
+        # Key is in column 2 (B), value is in column 3 (C)
+        key_cell = ws.cell(row=row, column=2).value
+        val_cell = ws.cell(row=row, column=3).value
         if key_cell and val_cell:
             key = str(key_cell).strip()
             data[key] = parse_value(val_cell)
@@ -139,7 +159,9 @@ def seed_from_excel(excel_path):
 def seed_from_folder(folder_path):
     """Seed database from all Excel files in folder."""
     folder = Path(folder_path)
-    excel_files = list(folder.glob('*.xlsx')) + list(folder.glob('*.xls'))
+    # Skip temporary files (~$...)
+    excel_files = [f for f in folder.glob('*.xlsx') if not f.name.startswith('~$')]
+    excel_files += [f for f in folder.glob('*.xls') if not f.name.startswith('~$')]
 
     if not excel_files:
         print(f"No Excel files found in {folder_path}")

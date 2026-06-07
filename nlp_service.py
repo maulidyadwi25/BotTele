@@ -21,6 +21,16 @@ except ImportError:
 
 import gsheets_service as gs
 
+# Database integration for DirOps
+try:
+    import sys
+    sys.path.insert(0, '.')
+    from dirops_service.database import create_app
+    from dirops_service.models import Project
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
+
 # =============================================================================
 # Configuration
 # =============================================================================
@@ -167,6 +177,48 @@ class ProjectCache:
         except Exception as e:
             print(f"[NLP] Error loading from Master Sheet: {e}")
             return False
+
+    def load_from_database(self) -> bool:
+        """Load project list from DirOps database"""
+        if not DB_AVAILABLE:
+            print("[NLP] Database not available")
+            return False
+        
+        if not self._is_expired() and self._is_loaded:
+            print(f"[NLP] Using cached project list (loaded {time.time() - self._last_update:.0f}s ago)")
+            return True
+        
+        print("[NLP] Loading project list from DirOps database")
+        
+        try:
+            app = create_app()
+            with app.app_context():
+                projects = Project.query.all()
+                
+                self._cache.clear()
+                self._sheet_id_map.clear()
+                
+                for p in projects:
+                    key = p.project_code.lower()
+                    self._cache[key] = {
+                        "name": f"{p.project_code} - {p.project_name}",
+                        "project_code": p.project_code,
+                        "project_name": p.project_name,
+                        "sheet_id": "",  # Local files don't have sheet_id
+                        "search_terms": self._generate_search_terms(p.project_name)
+                    }
+                    self._sheet_id_map[key] = p.project_code
+                
+                self._last_update = time.time()
+                self._is_loaded = True
+                print(f"[NLP] Loaded {len(self._cache)} projects from database")
+                return True
+                
+        except Exception as e:
+            print(f"[NLP] Error loading from database: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
     
     def _generate_search_terms(self, name: str) -> List[str]:
         """Generate searchable terms from project name"""
@@ -177,10 +229,16 @@ class ProjectCache:
     
     def get_all_projects(self) -> List[Dict]:
         """Get all cached projects"""
-        return [
-            {"name": v["name"], "sheet_id": v["sheet_id"]}
-            for v in self._cache.values()
-        ]
+        result = []
+        for v in self._cache.values():
+            result.append({
+                "name": v["name"],
+                "sheet_id": v["sheet_id"],
+                "project_code": v.get("project_code", ""),
+                "project_name": v.get("project_name", ""),
+                "search_terms": v.get("search_terms", [])
+            })
+        return result
     
     def find_project(self, query: str, threshold: float = 0.6) -> Tuple[Optional[str], Optional[str], float, List[str]]:
         """
@@ -351,6 +409,11 @@ class NLPService:
     
     def initialize(self, master_sheet_id: str = None, master_sheet_name: str = None) -> bool:
         """Initialize NLP service by loading project list"""
+        # Prefer database over Google Sheets for DirOps
+        if DB_AVAILABLE:
+            print("[NLP] Using DirOps database for project list")
+            return self.cache.load_from_database()
+        
         sheet_id = master_sheet_id or MASTER_SHEET_ID
         sheet_name = master_sheet_name or MASTER_SHEET_NAME
         
@@ -393,7 +456,10 @@ class NLPService:
     def refresh_cache(self):
         """Force refresh the project cache"""
         self.cache.refresh()
-        if MASTER_SHEET_ID:
+        # Prefer database over Google Sheets for DirOps
+        if DB_AVAILABLE:
+            self.cache.load_from_database()
+        elif MASTER_SHEET_ID:
             self.cache.load_from_master_sheet(MASTER_SHEET_ID, MASTER_SHEET_NAME)
     
     def get_cached_projects(self) -> List[Dict]:
