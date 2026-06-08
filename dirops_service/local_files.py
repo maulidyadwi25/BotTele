@@ -104,14 +104,21 @@ def get_project_profile(project_code: str) -> Dict:
         profile = {}
         
         for row in ws.iter_rows(values_only=True):
-            if len(row) >= 2 and row[0]:
-                key = str(row[0]).strip()
-                value = row[1]
+            # In "1. Project Profile" sheet:
+            # Column A (index 0) is empty, Column B (index 1) is key, Column C (index 2) is value, Column D (index 3) is unit
+            if len(row) >= 3 and row[1]:
+                key = str(row[1]).strip()
+                value = row[2]
                 if value is not None:
                     if isinstance(value, (int, float)):
                         profile[key] = value
                     else:
                         profile[key] = str(value).strip()
+                # Also store unit/currency if present
+                if len(row) >= 4 and row[3]:
+                    unit = str(row[3]).strip()
+                    if unit and unit != 'None':
+                        profile[f'{key} Unit'] = unit
         
         wb.close()
         return profile

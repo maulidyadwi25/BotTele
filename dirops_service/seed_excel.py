@@ -87,12 +87,30 @@ def parse_project_profile(ws):
     """Parse Project Profile sheet."""
     data = {}
     for row in range(1, ws.max_row + 1):
-        # Key is in column 2 (B), value is in column 3 (C)
+        # Key is in column 2 (B), value is in column 3 (C), currency/unit in column 4 (D)
         key_cell = ws.cell(row=row, column=2).value
         val_cell = ws.cell(row=row, column=3).value
-        if key_cell and val_cell:
+        unit_cell = ws.cell(row=row, column=4).value
+        
+        if key_cell:
             key = str(key_cell).strip()
-            data[key] = parse_value(val_cell)
+            
+            # Handle "Nilai Proyek (IDR)" and "Nilai Proyek (Valas)" specially
+            # They have the currency/unit in column 4 (D)
+            if 'Nilai Proyek (IDR)' in key and val_cell is not None:
+                data['Nilai Proyek (IDR)'] = parse_value(val_cell)
+                if unit_cell:
+                    currency = str(unit_cell).strip()
+                    if currency and currency != 'None':
+                        data['Currency IDR'] = currency
+            elif 'Nilai Proyek (Valas)' in key and val_cell is not None:
+                data['Nilai Proyek (Valas)'] = parse_value(val_cell)
+                if unit_cell:
+                    currency = str(unit_cell).strip()
+                    if currency and currency != 'None':
+                        data['Currency Valas'] = currency
+            elif val_cell is not None:
+                data[key] = parse_value(val_cell)
     return data
 
 
@@ -130,7 +148,8 @@ def seed_from_excel(excel_path):
             status=profile.get('Status Proyek'),
             unit_kerja=profile.get('Unit Kerja'),
             contract_value_idr=profile.get('Nilai Proyek (IDR)'),
-            currency=profile.get('Nilai Proyek (Valas)'),
+            contract_value_valas=profile.get('Nilai Proyek (Valas)'),
+            currency=profile.get('Currency Valas') or profile.get('Currency IDR'),
             cogs_percent=profile.get('COGS %'),
             cogs_idr=profile.get('COGS IDR'),
             gpm_percent=profile.get('GPM %'),
